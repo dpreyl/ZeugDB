@@ -88,6 +88,21 @@ Direkte Felder und Block-Felder sind strukturell identisch – der Key trägt di
 
 Keine zwei Klassen von Feldern. Git-Konflikte werden pro Zeile (= pro Feld) erkannt.
 
+**Feld-Typen:**
+
+| Typ | Wert | Beispiel |
+|---|---|---|
+| `text` | Freier Text | `Sony` |
+| `number` | Zahl (Punkt als Dezimaltrenner) | `230` |
+| `dropdown` | Ein Wert aus pipe-getrennten Optionen | `neu` |
+| `textarea` | Längerer Text (einzeilig) | `Defekt seit 01.01.` |
+| `date` | Datum im ISO-Format | `2027-03-15` |
+| `datetime` | Zeitstempel im ISO-Format | `2025-01-15T10:30:00Z` |
+| `uuid` | UUID v4 | `a3f2b1c0-4e8d-9f1a-2b3c-d4e5f6a7b8c9` |
+| `asset_ref` | UUID eines anderen Assets | `c8d9e0f1-...` |
+| `foto_ref` | Dateiname in `fotos/` (LFS) | `a3f2b1c0_kassenbon.jpg` |
+| `boolean` | `ja` oder `nein` | `ja` |
+
 ### Git-Repo Struktur
 
 ```
@@ -144,7 +159,7 @@ feld: steckertyp, dropdown, schuko|c13|c19|c7, optional
 name: Garantie
 feld: bis, date, optional
 feld: haendler, text, optional
-feld: kassenbon, text, optional   # Dateiname in fotos/, kommasepariert bei mehreren
+feld: kassenbon, foto_ref, optional   # Referenz auf Datei in fotos/
 ```
 
 ```
