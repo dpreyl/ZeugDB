@@ -1,0 +1,16 @@
+# ZeugDB – Development Dockerfile
+# Wird von docker-compose.yml für den Dev-Server genutzt.
+# Mountet das Host-Verzeichnis für Hot-Reloading.
+
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Kopiere nur package-Files für den ersten npm install
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Quelle wird als Volume gemountet – kein COPY nötig
+EXPOSE 3000
+
+CMD ["npm", "run", "dev", "--", "--host"]

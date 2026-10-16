@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+build/
+.svelte-kit/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Docker volumes (named volumes, nicht bind-mounts)
+# Keine Docker-Volumes hier ignorieren — die sind external.
+
+# Temporär
+.tmp/
+tmp/

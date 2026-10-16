@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+build/
+.svelte-kit/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docs (nicht im Image nötig)
+*.md
+ARCHITEKTUR-VORSCHLAG.md
+
+# Test artifacts
+coverage/

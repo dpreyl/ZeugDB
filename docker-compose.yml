@@ -1,0 +1,66 @@
+# ZeugDB – Docker Compose (Entwicklungsumgebung)
+#
+# Services:
+#   app       – SvelteKit PWA (Dev Server mit Hot-Reloading)
+#   gitserver – Gitea als lokaler Git-Server mit LFS-Unterstützung
+#
+# Ports:
+#   3000      – PWA Development Server (Vite HMR)
+#   8929      – Gitea Web UI + HTTP API
+#   8930      – Gitea SSH (optional)
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules  # Host node_modules vermeiden (Cache-Volume)
+    environment:
+      - NODE_ENV=development
+      - GIT_SERVER_URL=http://gitserver:3000
+    depends_on:
+      - gitserver
+
+  gitserver:
+    image: gitea/gitea:latest
+    ports:
+      - "8929:3000"
+      - "8930:22"
+    volumes:
+      - gitea_data:/data
+      - gitea_logs:/log
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - ROOT_URL=http://localhost:8929/
+      - DISABLE_REGISTRATION=false
+      - REQUIRE_SIGNIN_VIEW=false
+    restart: unless-stopped
+
+volumes:
+  gitea_data:
+  gitea_logs:
+
+  gitserver:
+    image: gitea/gitea:latest
+    ports:
+      - "8929:3000"
+      - "8930:22"
+    volumes:
+      - gitea_data:/data
+      - gitea_logs:/log
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - ROOT_URL=http://localhost:8929/
+      - DISABLE_REGISTRATION=false
+      - REQUIRE_SIGNIN_VIEW=false
+    restart: unless-stopped
+
+volumes:
+  gitea_data:
+  gitea_logs:
