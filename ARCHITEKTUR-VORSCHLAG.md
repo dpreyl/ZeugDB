@@ -164,14 +164,18 @@ feld: protokoll, dropdown, ethernet|wifi|vpn, optional
 
 ### Basis-Vorlage
 
-Die Basis-Vorlage definiert die Felder, die **alle** Assets gemeindeübergreifend besitzen.
-Jeder Typ erbt diese Felder automatisch – sie müssen nicht in jedem Typ wiederholt werden.
+Die Basis-Vorlage definiert die Felder, die **alle** Assets gemein haben –
+Identifikation, Zustand, Metadaten. Jeder Typ erbt diese Felder, sie müssen
+nicht in jedem Typ wiederholt werden.
 
 ```
 # types/_base.type
 name: Basis
 kategorie: intern
 
+feld: id, uuid, pflicht
+feld: erstellt, datetime, pflicht
+feld: geaendert, datetime, pflicht
 feld: hersteller, text, optional
 feld: modell, text, optional
 feld: seriennummer, text, optional
@@ -179,15 +183,13 @@ feld: inventarnummer, text, optional
 feld: zustand, dropdown, neu|einwandfrei|defekt|in_reparatur|verschrottet, pflicht
 feld: notizen, textarea, optional
 feld: passwort, text, optional, sensitiv
+feld: fotos, text, optional
 
 block: stromanschluss, 0, 5
 block: port, 0, 50
 block: garantie, 0, 3
 block: netzwerkanschluss, 0, 5
 ```
-
-> `erstellt`, `geaendert`, `id`, `type`, `location` und `fotos` sind System-Felder, die
-> die PWA automatisch verwaltet. Sie stehen in keiner Vorlage, sondern werden immer gesetzt.
 
 ### Typ-Vorlagen (Asset Types)
 
@@ -220,24 +222,6 @@ feld: laenge, number, optional   # in cm
 block: kabelende, 2, 2   # Kabel haben immer genau 2 Enden
 ```
 
-### Gemeinde-spezifische Erweiterungen
-
-Eine Gemeinde kann eigene Typ-Dateien anlegen, die auf `_base` oder auf bestehenden Typen aufbauen, um lokale Bedürfnisse abzudecken:
-
-```
-# types/tonanlage_ki_berlin.type
-extends: _base
-name: Tonanlage (Berlin)
-kategorie: gerät
-icon: speaker
-
-feld: mischpult_kanäle, number, optional
-feld: drahtlos_mikrofone, boolean, optional
-
-block: stromanschluss, 1, 1
-block: port, 0, 20
-```
-
 ### Asset-Datei (konkretes Gerät)
 
 Jede Zeile ist ein Feld. Direkte Felder und Block-Felder sind strukturell identisch.
@@ -245,25 +229,18 @@ Der Key `block[instanz].feld` zeigt die Hierarchie.
 Die PWA validiert beim Speichern, dass jedes Feld in der Vorlage (einschließlich geerbter Felder) definiert ist.
 
 ```
-# System-Felder (automatisch von PWA verwaltet)
 id: a3f2b1c0-4e8d-9f1a-2b3c-d4e5f6a7b8c9
 type: projektor
 location: 7f3a2b1c-4e8d-9f1a-2b3c-d4e5f6a7b8c9
 erstellt: 2025-01-15T10:30:00Z
 geaendert: 2025-06-20T14:22:00Z
-
-# Geerbt von _base.type
 hersteller: Sony
 modell: VPL-FHZ50
 seriennummer: S123456789
 inventarnummer: DEV-2024-0042
 zustand: einwandfrei
-
-# Spezifisch für projektor.type
 auflösung: 4k
 helligkeit: 5000
-
-# Geerbte Blöcke aus _base.type
 stromanschluss[1].spannung: 230
 stromanschluss[1].stromstaerke: 2.5
 stromanschluss[1].leistung: 575
@@ -276,8 +253,6 @@ port[3].name: USB
 port[3].kabel:
 garantie[1].bis: 2027-03-15
 garantie[1].haendler: IT-Shop Berlin
-
-# System-Feld
 fotos: a3f2b1c0_typenschild.jpg,a3f2b1c0_zustand.jpg
 ```
 
