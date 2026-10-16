@@ -13,4 +13,4 @@ RUN npm install --ignore-scripts
 # Quelle wird als Volume gemountet – kein COPY nötig
 EXPOSE 3000
 
-CMD ["npm", "run", "dev", "--", "--host"]
+CMD ["npm", "run", "dev", "--", "--host", "--port", "3000"]
