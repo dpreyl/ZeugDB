@@ -144,7 +144,7 @@ feld: steckertyp, dropdown, schuko|c13|c19|c7, optional
 name: Garantie
 feld: bis, date, optional
 feld: haendler, text, optional
-feld: kassenbon, foto_ref, optional
+feld: kassenbon, text, optional   # Dateiname in fotos/, kommasepariert bei mehreren
 ```
 
 ```
@@ -174,6 +174,8 @@ name: Basis
 kategorie: intern
 
 feld: id, uuid, pflicht
+feld: type, text, pflicht
+feld: location, asset_ref, optional
 feld: erstellt, datetime, pflicht
 feld: geaendert, datetime, pflicht
 feld: hersteller, text, optional
@@ -184,6 +186,9 @@ feld: zustand, dropdown, neu|einwandfrei|defekt|in_reparatur|verschrottet, pflic
 feld: notizen, textarea, optional
 feld: passwort, text, optional, sensitiv
 feld: fotos, text, optional
+
+> `type` referenziert den Dateiname der Typ-Vorlage ohne `.type`-Endung (z. B. `projektor` für `types/projektor.type`).
+> `location` referenziert die UUID einer Location-Datei. `fotos` ist eine kommaseparierte Liste von Dateinamen in `fotos/`.
 
 block: stromanschluss, 0, 5
 block: port, 0, 50
@@ -383,7 +388,7 @@ Konflikt bei Asset "Projektor Sony VPL-FHZ50" (DEV-2024-0042)
 ┌──────────┬──────────────┬───────────────┐
 │ Feld     │ Lokal        │ Remote        │
 ├──────────┼──────────────┼───────────────┤
-│ zustand  │ defekt       │ in_reparatur  │ ◄ Nutzer wählt
+│ zustand  │ defekt       │ in_reparatur  │ ◄ Nutzer klickt gewünschte Version | beide ablehnen & manuell eingeben
 └──────────┴──────────────┴───────────────┘
 ```
 
@@ -402,7 +407,9 @@ Keine manuellen Schritte auf GitHub. Die PWA löst den Merge per API aus:
 
 ## Zwei-Stufiger Zugriff
 
-### Standardzugriff (freigegebener Code)
+### Standardzugriff
+
+Der Git-Zugriff erfolgt über den individuellen GitHub PAT (siehe Authentifizierung). Der zwei-stufige Zugriff regelt ausschließlich, welche **Datenfelder** sichtbar sind:
 
 - Alle Assets sichtbar
 - Alle nicht-sensitiven Felder bearbeitbar
@@ -447,7 +454,7 @@ Die Asset-Daten liegen im Git-Repo als Klartext. Eine Ende-zu-Ende-Verschlüssel
 - **Konfliktlösung unmöglich:** Git kann verschlüsselte Werte nicht vergleichen. Parallele Änderungen desselben Assets würden immer Konflikte produzieren, selbst wenn beide denselben Wert geschrieben haben.
 - **Suche und Wartbarkeit verloren:** `git grep`, manuelle Reparatur von Asset-Dateien, visuelle Review — alles nur auf Klartext möglich.
 
-**Schutzstattdessen in Schichten:**
+**Schutz stattdessen in Schichten:**
 
 | Schicht | Maßnahme | Risiko |
 |---|---|---|
@@ -477,7 +484,6 @@ CREATE TABLE assets (
   location TEXT REFERENCES locations(id),
   erstellt TEXT,
   geaendert TEXT,
-  git_branch TEXT         -- aktueller Branch der Herkunft
 );
 
 -- Indizes
@@ -499,10 +505,9 @@ CREATE TABLE asset_fields (
 CREATE INDEX idx_af_path ON asset_fields(path);
 CREATE INDEX idx_af_value ON asset_fields(value);
 
--- Volltext-Suche über alle Felder
-CREATE VIRTUAL TABLE assets_fts USING fts5 (
-  id, content,
-  content=assets, content_rowid=rowid
+-- Volltext-Suche über alle Asset-Felder (gespiegelt aus asset_fields)
+CREATE VIRTUAL TABLE asset_fields_fts USING fts5 (
+  asset_id, path, value
 );
 
 -- Vorlagen (aus Git types/)
@@ -584,13 +589,15 @@ SELECT DISTINCT af.asset_id FROM asset_fields af
 SELECT value FROM asset_fields 
   WHERE asset_id = 'a3f2b1c0-...' AND path = 'port[1].kabel';
 
--- Spannung > 230V
+-- Spannung > 230V (CAST für numerischer Vergleich)
 SELECT asset_id FROM asset_fields 
   WHERE path LIKE 'stromanschluss[%].spannung'
   AND CAST(value AS REAL) > 230;
 
--- Volltext-Suche: "Sony"
-SELECT * FROM assets_fts WHERE assets_fts MATCH 'Sony';
+-- Volltext-Suche: "Sony" (über asset_fields)
+SELECT DISTINCT af.asset_id FROM asset_fields af
+  INNER JOIN asset_fields_fts fts ON fts.asset_id = af.asset_id
+  WHERE asset_fields_fts MATCH 'Sony';
 ```
 
 ---
@@ -606,7 +613,7 @@ kia-geraetemanagement/
 │   │   │   └── queries.ts          # Abfrage-Helfer, FTS-Suche
 │   │   ├── git/
 │   │   │   ├── repo.ts             # isomorphic-git Initialisierung
-│   │   │   ├── sync.ts             # Push/Pull/Branch-Merge
+│   │   │   ├── pushpull.ts         # Push/Pull
 │   │   │   ├── lfs.ts              # isogit-lfs Wrapper
 │   │   │   └── mirror.ts           # Git → SQLite Spiegelung
 │   │   ├── sync/
@@ -658,8 +665,8 @@ kia-geraetemanagement/
 
 | Alternative | Grund für Ablehnung |
 |---|---|
-| **CouchDB + PouchDB** | Native Auth/RBAC, aber kein stabiler SaaS-Anbieter (Cloudant 2024 abgeschaltet). Bei Geräte-Diebstahl alle Daten lesbar (IndexedDB Klartext). E2EE würde Git-Diff-Workflow zerstören. |
-| **ElectricSQL** | Sync-Engine out-of-the-box, aber proprietär, kein Auth, kein Audit-Trail, Last-write-wins, Vendor-Lock-in zu Startup |
+| **CouchDB + PouchDB** | Kein stabiler SaaS-Anbieter (Cloudant 2024 abgeschaltet). Bei Geräte-Diebstahl alle Daten lesbar (IndexedDB Klartext). Konfliktlösung mit `_revisions` mühsam. |
+| **ElectricSQL** | Sync-Engine out-of-the-box, aber proprietär, kein Audit-Trail, Last-write-wins statt manueller Konfliktlösung, Vendor-Lock-in zu Startup |
 | **Reine Git-Blobs (ohne SQLite)** | Keine indizierte Suche, keine relationale Queries |
 | **P2P-Sync via WebRTC** | Zu komplex, cross-Network nicht zuverlässig |
 | **Bilder im Git-Repo (kein LFS)** | Repo wird bei vielen Bildern langsam und groß |
