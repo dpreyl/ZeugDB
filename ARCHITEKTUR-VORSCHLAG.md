@@ -194,7 +194,7 @@ block: netzwerkanschluss, 0, 5
 ### Typ-Vorlagen (Asset Types)
 
 Ein Typ erbt die Basis-Vorlage und fügt nur **typ-spezifische** Felder und Komponenten hinzu.
-Individuelle Felder ohne Vorlage sind nicht möglich – jedes Feld muss in einer Vorlage definiert sein.
+Jedes Feld muss in einer Vorlage definiert sein. Individuelle, ad-hoc Felder an einem einzelnen Asset sind nicht vorgesehen – eine Vorlage zu erstellen ist der normale Weg, wenn ein Feld fehlt.
 
 ```
 # types/projektor.type
