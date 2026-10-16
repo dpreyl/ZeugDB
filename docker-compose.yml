@@ -36,30 +36,38 @@ services:
     environment:
       - USER_UID=1000
       - USER_GID=1000
-      - ROOT_URL=http://localhost:8929/
-      - DISABLE_REGISTRATION=false
-      - REQUIRE_SIGNIN_VIEW=false
+      - GITEA__app__APP_NAME=ZeugDB Git Server
+      - GITEA__server__ROOT_URL=http://localhost:8929/
+      - GITEA__database__DB_TYPE=sqlite3
+      - GITEA__security__INSTALL_LOCK=true
+      - GITEA__service__REGISTER_EMAIL_CONFIRM=false
+      - GITEA__service__ENABLE_CAPTCHA=false
+      - GITEA__server__LFS_START_SERVER=true
+      - GITEA__log__MODE=console
+      - GITEA__log__LEVEL=info
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/api/v1/version"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
     restart: unless-stopped
 
-volumes:
-  gitea_data:
-  gitea_logs:
-
-  gitserver:
+  gitea-init:
     image: gitea/gitea:latest
-    ports:
-      - "8929:3000"
-      - "8930:22"
     volumes:
       - gitea_data:/data
-      - gitea_logs:/log
+      - ./gitea/init.sh:/init.sh
+    entrypoint: ["/bin/sh", "/init.sh"]
     environment:
-      - USER_UID=1000
-      - USER_GID=1000
-      - ROOT_URL=http://localhost:8929/
-      - DISABLE_REGISTRATION=false
-      - REQUIRE_SIGNIN_VIEW=false
-    restart: unless-stopped
+      - GITEA_ADMIN_USERNAME=admin
+      - GITEA_ADMIN_PASSWORD=admin123
+      - GITEA_ADMIN_EMAIL=admin@zeugdb.local
+      - GITEA_REPO_NAME=ZeugDB
+    depends_on:
+      gitserver:
+        condition: service_healthy
+    restart: "no"
 
 volumes:
   gitea_data:

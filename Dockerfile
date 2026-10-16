@@ -4,8 +4,8 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 # Dependencies zuerst (Caching)
-COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts
+COPY package.json ./
+RUN npm install --production --ignore-scripts
 
 # Source + Build
 COPY . .
