@@ -1,20 +1,18 @@
 <script lang="ts">
-  let assets = [
-    { id: 'a1', type: 'projektor', location: 'Raum 101', geaendert: '2025-06-20' },
-    { id: 'a2', type: 'hdmi-kabel', location: 'Raum 101', geaendert: '2025-06-19' },
-    { id: 'a3', type: 'patchpanel', location: 'Serverraum', geaendert: '2025-06-15' }
-  ];
+  import type { PageData } from './$types';
+
+  let { data }: { data: PageData } = $props();
 </script>
 
 <div class="space-y-4">
   <div class="flex items-center justify-between">
     <div>
       <h2 class="text-xl font-semibold text-gray-900">Assets</h2>
-      <p class="text-sm text-gray-500">{assets.length} Einträge</p>
+      <p class="text-sm text-gray-500">{data.assets.length} Einträge</p>
     </div>
-    <button class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">
+    <a href="/assets/new" class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-block">
       + Neues Asset
-    </button>
+    </a>
   </div>
 
   <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
@@ -29,7 +27,7 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-100">
-        {#each assets as asset (asset.id)}
+        {#each data.assets as asset (asset.id)}
         <tr class="hover:bg-gray-50">
           <td class="px-4 py-2 font-mono text-xs text-gray-500">{asset.id}</td>
           <td class="px-4 py-2 capitalize">{asset.type}</td>

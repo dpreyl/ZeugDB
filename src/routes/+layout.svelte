@@ -1,5 +1,17 @@
 <script lang="ts">
   import '../app.css';
+  import { initializeStore } from '$lib/services/init';
+
+  initializeStore();
+
+  // Service Worker für Offline-Nutzung registrieren
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(err => {
+        console.error('SW-Registrierung fehlgeschlagen:', err);
+      });
+    });
+  }
 </script>
 
 <div class="min-h-screen bg-gray-50">

@@ -55,26 +55,61 @@ export function upsertAssetFields(db: Database, assetId: string, fields: Record<
 }
 
 /**
- * Liest ein Asset nach ID.
+ * Liest ein Asset nach ID (parameterisiert gegen SQL-Injection).
  */
 export function getAssetById(db: Database, id: string): AssetRow | null {
-  const result = db.exec(`SELECT id, type, location, erstellt, geaendert FROM assets WHERE id = '${id}'`);
-  if (!result || result.length === 0 || !result[0].values || result[0].values.length === 0) return null;
-  const cols = result[0].columns as (keyof AssetRow)[];
-  const vals = result[0].values[0] as (string | null)[];
-  return cols.reduce((obj, col, i) => ({ ...obj, [col]: vals[i] }), {} as AssetRow);
+  const stmt = db.prepare(
+    'SELECT id, type, location, erstellt, geaendert FROM assets WHERE id = ?'
+  );
+  stmt.bind([id]);
+  const row: AssetRow | null = stmt.step() ? stmt.getAsObject() as AssetRow : null;
+  stmt.free();
+  return row;
 }
 
 /**
  * Liest alle Assets.
  */
 export function getAllAssets(db: Database): AssetRow[] {
-  const result = db.exec('SELECT id, type, location, erstellt, geaendert FROM assets ORDER BY id');
-  if (!result || result.length === 0 || !result[0].values || result[0].values.length === 0) return [];
-  const cols = result[0].columns as (keyof AssetRow)[];
-  return result[0].values.map((vals: (string | null)[]) =>
-    cols.reduce((obj, col, i) => ({ ...obj, [col]: vals[i] }), {} as AssetRow)
+  const stmt = db.prepare(
+    'SELECT id, type, location, erstellt, geaendert FROM assets ORDER BY id'
   );
+  const rows: AssetRow[] = [];
+  while (stmt.step()) {
+    rows.push(stmt.getAsObject() as AssetRow);
+  }
+  stmt.free();
+  return rows;
+}
+
+/**
+ * Liest alle Felder eines Assets.
+ */
+export function getAssetFields(db: Database, assetId: string): Record<string, string> {
+  const stmt = db.prepare(
+    'SELECT path, value FROM asset_fields WHERE asset_id = ?'
+  );
+  stmt.bind([assetId]);
+  const result: Record<string, string> = {};
+  while (stmt.step()) {
+    const obj = stmt.getAsObject() as { path: string; value: string };
+    result[obj.path] = obj.value;
+  }
+  stmt.free();
+  return result;
+}
+
+/**
+ * Liest alle Assets mit ihren Feldern.
+ */
+export function getAllAssetsWithFields(
+  db: Database
+): { row: AssetRow; fields: Record<string, string> }[] {
+  const rows = getAllAssets(db);
+  return rows.map(row => ({
+    row,
+    fields: getAssetFields(db, row.id)
+  }));
 }
 
 /**

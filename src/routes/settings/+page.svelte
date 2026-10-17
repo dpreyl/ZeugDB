@@ -1,15 +1,76 @@
 <script lang="ts">
-  let gitUrl = $state(localStorage.getItem('zeugdb:gitUrl') || 'http://192.168.178.21:8929/dpreyl/ZeugDB');
-  let token = $state(localStorage.getItem('zeugdb:token') || '');
-  let username = $state(localStorage.getItem('zeugdb:username') || '');
+  import {
+    loadGitConfig,
+    saveGitConfig,
+    cloneRepo,
+    initRepo,
+    getSyncStatus,
+    type GitConfig
+  } from '$lib/services/git.service';
+
+  const savedConfig = loadGitConfig();
+  let gitUrl = $state(savedConfig?.url ?? 'http://192.168.178.21:8929/dpreyl/ZeugDB');
+  let token = $state(savedConfig?.token ?? '');
+  let username = $state(savedConfig?.username ?? '');
+
   let saved = $state(false);
+  let loading = $state(false);
+  let error = $state<string | null>(null);
+  let status = $state<{
+    initialized: boolean;
+    remoteUrl: string | undefined;
+    hasChanges: boolean;
+  } | null>(null);
+
+  // Lade initial den Sync-Status
+  (async () => {
+    try {
+      status = await getSyncStatus();
+    } catch {
+      // ignorieren
+    }
+  })();
 
   function handleSave() {
-    localStorage.setItem('zeugdb:gitUrl', gitUrl);
-    localStorage.setItem('zeugdb:token', token);
-    localStorage.setItem('zeugdb:username', username);
+    const config: GitConfig = {
+      url: gitUrl,
+      username,
+      token
+    };
+    saveGitConfig(config);
     saved = true;
     setTimeout(() => saved = false, 2000);
+  }
+
+  async function handleClone() {
+    loading = true;
+    error = null;
+    try {
+      const config: GitConfig = { url: gitUrl, username, token };
+      await cloneRepo(config, (p) => {
+        error = null;
+        // Fortschritt könnte man hier anzeigen
+      });
+      saveGitConfig(config);
+      status = await getSyncStatus();
+    } catch (e: unknown) {
+      error = e instanceof Error ? e.message : 'Klon fehlgeschlagen';
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function handleInit() {
+    loading = true;
+    error = null;
+    try {
+      await initRepo(username || 'User', `${username || 'user'}@zeugdb.local`);
+      status = await getSyncStatus();
+    } catch (e: unknown) {
+      error = e instanceof Error ? e.message : 'Init fehlgeschlagen';
+    } finally {
+      loading = false;
+    }
   }
 </script>
 
@@ -22,6 +83,12 @@
   {#if saved}
     <div class="p-3 bg-green-50 border border-green-200 rounded-md text-sm text-green-800">
       ✓ Einstellungen gespeichert
+    </div>
+  {/if}
+
+  {#if error}
+    <div class="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800">
+      ✗ {error}
     </div>
   {/if}
 
@@ -71,7 +138,36 @@
   </div>
 
   <div class="pt-4 border-t border-gray-200">
+    <h3 class="text-sm font-medium text-gray-700 mb-2">Repo-Verwaltung</h3>
+
+    <div class="flex gap-2">
+      <button
+        onclick={handleClone}
+        disabled={loading}
+        class="px-4 py-2 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 disabled:opacity-50"
+      >
+        {loading ? 'Läuft...' : 'Repo klonen'}
+      </button>
+      <button
+        onclick={handleInit}
+        disabled={loading}
+        class="px-4 py-2 bg-gray-600 text-white text-sm rounded-md hover:bg-gray-700 disabled:opacity-50"
+      >
+        Neues Repo erstellen
+      </button>
+    </div>
+  </div>
+
+  <div class="pt-4 border-t border-gray-200">
     <h3 class="text-sm font-medium text-gray-700 mb-2">Sync-Status</h3>
-    <p class="text-sm text-gray-500">Noch nicht implementiert — kommt in der nächsten Iteration.</p>
+    {#if status}
+      <div class="text-sm space-y-1">
+        <p><span class="font-medium">Initialisiert:</span> {status.initialized ? 'Ja' : 'Nein'}</p>
+        <p><span class="font-medium">Remote:</span> {status.remoteUrl ?? '—'}</p>
+        <p><span class="font-medium">Änderungen:</span> {status.hasChanges ? 'Ja' : 'Nein'}</p>
+      </div>
+    {:else}
+      <p class="text-sm text-gray-500">Status wird geladen...</p>
+    {/if}
   </div>
 </div>

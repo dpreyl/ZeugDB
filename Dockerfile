@@ -3,26 +3,35 @@ FROM node:22-alpine AS build
 
 WORKDIR /app
 
-# Dependencies zuerst (Caching)
-COPY package.json ./
-RUN npm install --production --ignore-scripts
+# Alle Dependencies (dev + prod) für den Build
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
 
 # Source + Build
 COPY . .
 RUN npm run build
 
-# ---- Production Stage ----
-FROM node:22-alpine AS production
+# ---- Production Stage (statische Dateien nur) ----
+FROM nginx:alpine AS production
 
-WORKDIR /app
+# Statische Build-Ausgabe nach /usr/share/nginx/html
+COPY --from=build /app/build /usr/share/nginx/html
 
-ENV NODE_ENV=production
+# Custom nginx Config für SPA-Routing (alle Routen → index.html)
+RUN echo 'server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+    # Service Worker muss ohne Fallback serviert werden
+    location = /sw.js {
+        try_files /sw.js =404;
+    }
+}' > /etc/nginx/conf.d/default.conf
 
-COPY --from=build /app/build build/
-COPY --from=build /app/package.json package.json
-COPY --from=build /app/node_modules node_modules/
+# Expose Port 80
+EXPOSE 80
 
-# Expose Port (default 3000)
-EXPOSE 3000
-
-CMD ["node", "build"]
+CMD ["nginx", "-g", "daemon off;"]

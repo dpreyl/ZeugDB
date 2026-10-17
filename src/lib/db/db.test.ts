@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import initSqlJs, { type Database } from 'sql.js';
-import { initDb, upsertAsset, upsertAssetFields, getAllAssets, getAssetById, deleteAsset } from './db';
+import { initDb, upsertAsset, upsertAssetFields, getAllAssets, getAssetById, deleteAsset, getAssetFields, getAllAssetsWithFields } from './db';
 
 describe('db', () => {
   let db: Database;
@@ -69,6 +69,33 @@ describe('db', () => {
     deleteAsset(db, 'a2');
     expect(getAssetById(db, 'a2')).toBeNull();
     expect(getAllAssets(db)).toHaveLength(1);
+  });
+
+  it('nutzt parameterisierte Abfragen (kein SQL-Injection)', () => {
+    // Ein ID mit SQL-Injection-Attempt sollte kein Asset finden
+    const result = getAssetById(db, "' OR '1'='1");
+    expect(result).toBeNull();
+  });
+
+  it('liest Felder eines Assets mit getAssetFields', () => {
+    upsertAssetFields(db, 'a1', { hersteller: 'Sony', modell: 'VPL-FHZ50' });
+    const fields = getAssetFields(db, 'a1');
+    expect(fields.hersteller).toBe('Sony');
+    expect(fields.modell).toBe('VPL-FHZ50');
+  });
+
+  it('gibt leeres Objekt bei fehlenden Feldern zurück', () => {
+    upsertAsset(db, { id: 'a3', type: 'test', location: null, erstellt: null, geaendert: null });
+    const fields = getAssetFields(db, 'a3');
+    expect(fields).toEqual({});
+  });
+
+  it('liest alle Assets mit Feldern', () => {
+    const all = getAllAssetsWithFields(db);
+    expect(all).toHaveLength(2);
+    const a1 = all.find(a => a.row.id === 'a1');
+    expect(a1).toBeDefined();
+    expect(a1!.fields.hersteller).toBe('Sony');
   });
 });
 

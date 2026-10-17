@@ -1,0 +1,130 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import {
+  initializeStore,
+  persistStore
+} from './init';
+import { getAssetStore, resetAssetStore } from '../stores/assets.store.svelte';
+import { getTypesStore, resetTypesStore } from '../stores/types.store.svelte';
+import { getLocationsStore, resetLocationsStore } from '../stores/locations.store.svelte';
+
+const ASSETS_KEY = 'zeugdb:assets';
+const TYPES_KEY = 'zeugdb:types';
+const LOCATIONS_KEY = 'zeugdb:locations';
+
+describe('init', () => {
+  beforeEach(() => {
+    resetAssetStore();
+    resetTypesStore();
+    resetLocationsStore();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    resetAssetStore();
+    resetTypesStore();
+    resetLocationsStore();
+    localStorage.clear();
+  });
+
+  it('seedet Demo-Daten beim ersten Aufruf', () => {
+    initializeStore();
+
+    expect(getAssetStore().all.length).toBeGreaterThan(0);
+    expect(getTypesStore().all.length).toBeGreaterThan(0);
+    expect(getLocationsStore().all.length).toBeGreaterThan(0);
+  });
+
+  it('speichert alle Stores in localStorage', () => {
+    initializeStore();
+
+    const assets = localStorage.getItem(ASSETS_KEY);
+    const types = localStorage.getItem(TYPES_KEY);
+    const locations = localStorage.getItem(LOCATIONS_KEY);
+
+    expect(assets).not.toBeNull();
+    expect(types).not.toBeNull();
+    expect(locations).not.toBeNull();
+
+    // JSON muss gültig sein
+    expect(() => JSON.parse(assets!)).not.toThrow();
+    expect(() => JSON.parse(types!)).not.toThrow();
+    expect(() => JSON.parse(locations!)).not.toThrow();
+  });
+
+  it('lädt Assets aus localStorage beim Neustart', () => {
+    initializeStore();
+    const originalCount = getAssetStore().all.length;
+
+    // Stores zurücksetzen (simuliert Neustart)
+    resetAssetStore();
+    resetTypesStore();
+    resetLocationsStore();
+
+    // Neue Store-Instanz — Daten müssten aus localStorage kommen
+    initializeStore();
+    expect(getAssetStore().all.length).toBe(originalCount);
+  });
+
+  it('persistStore speichert neue Assets', () => {
+    const store = getAssetStore();
+    store.createAsset({
+      type: 'test',
+      location: 'test-loc',
+      fields: { hersteller: 'TestCo' }
+    });
+    persistStore();
+
+    const saved = JSON.parse(localStorage.getItem(ASSETS_KEY)!);
+    expect(saved.length).toBe(1);
+    expect(saved[0].row.type).toBe('test');
+    expect(saved[0].fields.hersteller).toBe('TestCo');
+  });
+
+  it('persistStore speichert neue Typen', () => {
+    const store = getTypesStore();
+    store.add({
+      id: 'test-typ',
+      name: 'Test-Typ',
+      fields: [],
+      blocks: []
+    });
+    persistStore();
+
+    const saved = JSON.parse(localStorage.getItem(TYPES_KEY)!);
+    expect(saved.length).toBe(1);
+    expect(saved[0].id).toBe('test-typ');
+  });
+
+  it('persistStore speichert neue Standorte', () => {
+    const store = getLocationsStore();
+    store.add({
+      id: 'test-loc',
+      name: 'Test-Standort'
+    });
+    persistStore();
+
+    const saved = JSON.parse(localStorage.getItem(LOCATIONS_KEY)!);
+    expect(saved.length).toBe(1);
+    expect(saved[0].id).toBe('test-loc');
+  });
+
+  it('initialisiert nicht, wenn bereits Daten vorhanden', () => {
+    // Manuell ein Asset setzen
+    const store = getAssetStore();
+    store.createAsset({ type: 'vorhanden' });
+
+    // initializeStore sollte nichts tun
+    initializeStore();
+
+    // Immer noch nur das eine Asset
+    expect(store.all.length).toBe(1);
+    expect(store.all[0].type).toBe('vorhanden');
+  });
+
+  it('ignoriert korrupte localStorage-Daten', () => {
+    localStorage.setItem(ASSETS_KEY, '{ ungültiges JSON');
+
+    // Darf nicht werfen
+    expect(() => initializeStore()).not.toThrow();
+  });
+});
