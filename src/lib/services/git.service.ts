@@ -1,8 +1,13 @@
 import { GitRepo, type GitProgress, openGitDb } from '../git/repo';
+import type { Database } from '../db';
 import { syncAssetsToDb } from '../fs/repo-sync';
 import { getAssetStore } from '../stores/assets.store.svelte';
+import { getTypesStore } from '../stores/types.store.svelte';
+import { getLocationsStore } from '../stores/locations.store.svelte';
+import { parseAsset } from '../parser/asset.parser';
+import { parseType } from '../parser/type.parser';
+import { parseLocation } from '../parser/location.parser';
 import { persistStore } from './init';
-import type { Database } from '../db';
 
 /**
  * Persistierte Git-Konfiguration.
@@ -96,7 +101,7 @@ export async function pushToRemote(
 }
 
 /**
- * Zieht Änderungen vom Remote und syncrt Assets in den Store.
+ * Zieht Änderungen vom Remote und syncrt Assets in die DB.
  */
 export async function pullFromRemote(
   config: GitConfig,
@@ -117,6 +122,27 @@ export async function pullFromRemote(
   const store = getAssetStore();
   store.clear();
   persistStore();
+}
+
+/**
+ * Zieht Änderungen vom Remote und synchronisiert direkt die Stores
+ * (ohne Datenbank-Instanz). Liest .asset, .type und .location Dateien
+ * aus dem Git-FS und aktualisiert die Stores.
+ */
+export async function pullToStores(
+  config: GitConfig,
+  authorName: string,
+  authorEmail: string,
+  onprogress?: (progress: GitProgress) => void
+): Promise<void> {
+  const repo = await getGitRepo();
+  await repo.pull({
+    auth: { username: config.username, token: config.token },
+    author: { name: authorName, email: authorEmail },
+    onprogress
+  });
+  // Nach dem Pull die Dateien aus dem Git-FS in die Stores laden
+  await syncGitFsToStores(repo);
 }
 
 /**
@@ -157,4 +183,77 @@ export async function getSyncStatus(): Promise<{
     remoteUrl,
     hasChanges: changes.length > 0
   };
+}
+
+/**
+ * Liest alle Dateien aus dem Git-FS und lädt sie in die Stores.
+ * Wird nach einem Pull ohne DB aufgerufen.
+ */
+async function syncGitFsToStores(repo: GitRepo): Promise<void> {
+  const assetStore = getAssetStore();
+  const typesStore = getTypesStore();
+  const locationsStore = getLocationsStore();
+
+  // Assets laden
+  const assetRows: { row: import('../db').AssetRow; fields: Record<string, string> }[] = [];
+  try {
+    const assetFiles = await repo.readdir('assets');
+    for (const file of assetFiles) {
+      if (!file.endsWith('.asset')) continue;
+      const content = await repo.readFile(`assets/${file}`);
+      const { direct } = parseAsset(content);
+      const row: import('../db').AssetRow = {
+        id: direct['id'] ?? file.replace('.asset', ''),
+        type: direct['type'] ?? '',
+        location: direct['location'] ?? null,
+        erstellt: direct['erstellt'] ?? null,
+        geaendert: direct['geaendert'] ?? null
+      };
+      const fields: Record<string, string> = {};
+      const rowKeys = new Set(['id', 'type', 'location', 'erstellt', 'geaendert']);
+      for (const [k, v] of Object.entries(direct)) {
+        if (!rowKeys.has(k)) fields[k] = v;
+      }
+      assetRows.push({ row, fields });
+    }
+  } catch {
+    // Verzeichnis nicht vorhanden
+  }
+  assetStore.setAll(assetRows.map(a => a.row));
+  for (const { row, fields } of assetRows) {
+    if (Object.keys(fields).length > 0) {
+      assetStore.setFields(row.id, fields);
+    }
+  }
+
+  // Typen laden
+  typesStore.clear();
+  try {
+    const typeFiles = await repo.readdir('types');
+    for (const file of typeFiles) {
+      if (!file.endsWith('.type')) continue;
+      const id = file.replace('.type', '');
+      const content = await repo.readFile(`types/${file}`);
+      const parsed = parseType(id, content);
+      typesStore.add(parsed);
+    }
+  } catch {
+    // Verzeichnis nicht vorhanden
+  }
+
+  // Standorte laden
+  locationsStore.clear();
+  try {
+    const locFiles = await repo.readdir('locations');
+    for (const file of locFiles) {
+      if (!file.endsWith('.location')) continue;
+      const content = await repo.readFile(`locations/${file}`);
+      const parsed = parseLocation(content);
+      locationsStore.add(parsed);
+    }
+  } catch {
+    // Verzeichnis nicht vorhanden
+  }
+
+  persistStore();
 }

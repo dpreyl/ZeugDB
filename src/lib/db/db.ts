@@ -1,6 +1,8 @@
 import { SCHEMA_SQL } from './schema';
 import type { Database } from 'sql.js';
 
+export type { Database } from 'sql.js';
+
 export interface AssetRow {
   id: string;
   type: string;
@@ -20,7 +22,7 @@ export interface AssetInput {
 /**
  * Initialisiert eine leere SQLite-Datenbank mit dem ZeugDB-Schema.
  */
-export function initDb(SQL: typeof import('sql.js')): Database {
+export function initDb(SQL: { Database: typeof Database }): Database {
   const db = new SQL.Database();
   db.run(SCHEMA_SQL);
   return db;
@@ -62,7 +64,7 @@ export function getAssetById(db: Database, id: string): AssetRow | null {
     'SELECT id, type, location, erstellt, geaendert FROM assets WHERE id = ?'
   );
   stmt.bind([id]);
-  const row: AssetRow | null = stmt.step() ? stmt.getAsObject() as AssetRow : null;
+  const row: AssetRow | null = stmt.step() ? stmt.getAsObject() as unknown as AssetRow : null;
   stmt.free();
   return row;
 }
@@ -76,7 +78,7 @@ export function getAllAssets(db: Database): AssetRow[] {
   );
   const rows: AssetRow[] = [];
   while (stmt.step()) {
-    rows.push(stmt.getAsObject() as AssetRow);
+    rows.push(stmt.getAsObject() as unknown as AssetRow);
   }
   stmt.free();
   return rows;

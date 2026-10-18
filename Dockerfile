@@ -18,18 +18,7 @@ FROM nginx:alpine AS production
 COPY --from=build /app/build /usr/share/nginx/html
 
 # Custom nginx Config für SPA-Routing (alle Routen → index.html)
-RUN echo 'server {
-    listen 80;
-    root /usr/share/nginx/html;
-    index index.html;
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-    # Service Worker muss ohne Fallback serviert werden
-    location = /sw.js {
-        try_files /sw.js =404;
-    }
-}' > /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose Port 80
 EXPOSE 80

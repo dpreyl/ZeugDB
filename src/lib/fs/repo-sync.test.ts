@@ -5,7 +5,7 @@ import { createMockFs } from './repo-fs';
 import { syncAssetsToDb } from './repo-sync';
 
 describe('syncAssetsToDb', () => {
-  let db: typeof import('sql.js').Database;
+  let db: import('sql.js').Database;
   let fs: ReturnType<typeof createMockFs>;
 
   beforeAll(async () => {

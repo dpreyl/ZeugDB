@@ -1,13 +1,33 @@
-# ZeugDB – Docker Compose (Entwicklungsumgebung)
+# ZeugDB – Docker Compose
 #
+# =========================
+# Entwicklung (lokaler Dev-Server + Git-Server)
+# =========================
 # Services:
 #   app       – SvelteKit PWA (Dev Server mit Hot-Reloading)
 #   gitserver – Gitea als lokaler Git-Server mit LFS-Unterstützung
+#   gitea-init – Einmaliges Setup des Gitea-Admin-Accounts + Repos
 #
-# Ports:
+# Ports (Entwicklung):
 #   3000      – PWA Development Server (Vite HMR)
 #   8929      – Gitea Web UI + HTTP API
 #   8930      – Gitea SSH (optional)
+#
+# Start:  docker compose up
+#
+# =========================
+# Produktion (statische PWA via nginx)
+# =========================
+# Der production-Service baut die App als statische Site und serviert
+# sie via nginx. Er läuft auf dem Server, nicht auf den Client-Geräten.
+# Die Clients greifen per Browser zu (z.B. http://server-ip:8080).
+# Der Service Worker übernimmt Offline-Caching — kein lokaler Server
+# auf den Clients nötig.
+#
+# Start:  docker compose up -d production
+# Port:   8080 (Host) → 80 (nginx)
+# Hinweis: In Produktion ggf. Port 80 statt 8080 nutzen und einen
+#          Reverse Proxy (traefik, caddy) vor nginx schalten.
 
 services:
   app:
@@ -68,6 +88,15 @@ services:
       gitserver:
         condition: service_healthy
     restart: "no"
+
+  production:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    ports:
+      - "8080:80"
+    restart: unless-stopped
 
 volumes:
   gitea_data:

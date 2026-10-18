@@ -1,5 +1,6 @@
 import * as git from 'isomorphic-git';
 import { LightningFS } from 'isomorphic-git/lightningfs.js';
+import * as HTTP from 'isomorphic-git/http/web';
 import type { RepoFs } from '../fs/repo-fs';
 
 /**
@@ -19,8 +20,18 @@ export interface GitProgress {
 }
 
 /**
+ * Minimaler Status-Eintrag pro Datei.
+ */
+export interface StatusEntry {
+  file: string;
+  before: number | null;
+  after: number | null;
+}
+
+/**
  * Initialisiert das lokale Git-Repo mit LightningFS (IndexedDB-backed).
- * Gibt ein RepoFs-Interface zurück, das mit isomorphic-git arbeitet.
+ * Dateioperationen nutzen LightningFS direkt;
+ * Git-Operationen (init, clone, push, pull, commit) nutzen isomorphic-git.
  */
 export class GitRepo implements RepoFs {
   private fs: LightningFS;
@@ -33,31 +44,38 @@ export class GitRepo implements RepoFs {
     return this.fs;
   }
 
+  // --- RepoFs (Dateisystem) ---
+
   async writeFile(path: string, content: string): Promise<void> {
-    const encoded = new TextEncoder().encode(content);
-    await git.writeBlob({ fs: this.fs, dir: '/', blob: encoded, path });
+    await this.fs.writeFile(path, new TextEncoder().encode(content));
   }
 
-  async readFile(path: string, _encoding: 'text' | 'binary'): Promise<string> {
-    const blob = await git.readBlob({ fs: this.fs, dir: '/', path, integrity: false });
-    return new TextDecoder().decode(blob as Uint8Array);
+  async readFile(path: string): Promise<string> {
+    const data = await this.fs.readFile(path);
+    return new TextDecoder().decode(data);
   }
 
   async readdir(dir: string): Promise<string[]> {
-    const entries = await git.dir({ fs: this.fs, dir });
-    return entries.map(e => e.path);
+    const entries = await this.fs.readdir(dir);
+    return entries.map((e: { name: string }) => e.name);
   }
 
   async unlink(path: string): Promise<void> {
-    await git.delete({ fs: this.fs, dir: '/', path, force: true });
+    await this.fs.unlink(path);
   }
+
+  // --- Git-Operationen ---
 
   /**
    * Initialisiert ein neues Git-Repo.
    */
   async init(opts: { authorName: string; authorEmail: string }): Promise<void> {
     await git.init({ fs: this.fs, dir: '/' });
-    await git.configure({ fs: this.fs, dir: '/', global: false, ...opts });
+    // Schreiben der User-Konfiguration ins Config-File
+    await this.fs.writeFile(
+      '/.git/config',
+      `[user]\n\tname = ${opts.authorName}\n\temail = ${opts.authorEmail}\n`
+    );
   }
 
   /**
@@ -70,9 +88,10 @@ export class GitRepo implements RepoFs {
   }): Promise<void> {
     await git.clone({
       fs: this.fs,
+      http: HTTP,
       dir: '/',
       url: opts.url,
-      onprogress: (p) => {
+      onProgress: (p: { message?: string; loaded: number; total: number }) => {
         opts.onprogress?.({
           message: `${p.message || 'Klone...'} (${p.loaded}/${p.total})`,
           percent: p.total ? Math.round((p.loaded / p.total) * 100) : undefined
@@ -93,12 +112,13 @@ export class GitRepo implements RepoFs {
     auth: GitAuth;
     onprogress?: (progress: GitProgress) => void;
   }): Promise<string[]> {
-    return git.push({
+    await git.push({
       fs: this.fs,
+      http: HTTP,
       dir: '/',
       remote: opts.remote ?? 'origin',
       ref: opts.branch ? `refs/heads/${opts.branch}` : undefined,
-      onprogress: (p) => {
+      onProgress: (p: { message?: string; loaded: number; total: number }) => {
         opts.onprogress?.({
           message: `${p.message || 'Pushe...'} (${p.loaded}/${p.total})`,
           percent: p.total ? Math.round((p.loaded / p.total) * 100) : undefined
@@ -108,6 +128,7 @@ export class GitRepo implements RepoFs {
         'Authorization': `Basic ${btoa(`${opts.auth.username}:${opts.auth.token}`)}`
       }
     });
+    return [];
   }
 
   /**
@@ -122,10 +143,11 @@ export class GitRepo implements RepoFs {
   }): Promise<void> {
     await git.pull({
       fs: this.fs,
+      http: HTTP,
       dir: '/',
       remote: opts.remote ?? 'origin',
       ref: opts.branch ? `refs/heads/${opts.branch}` : undefined,
-      onprogress: (p) => {
+      onProgress: (p: { message?: string; loaded: number; total: number }) => {
         opts.onprogress?.({
           message: `${p.message || 'Ziehe...'} (${p.loaded}/${p.total})`,
           percent: p.total ? Math.round((p.loaded / p.total) * 100) : undefined
@@ -139,7 +161,8 @@ export class GitRepo implements RepoFs {
   }
 
   /**
-   * Commitet alle Änderungen.
+   * Commitet aktuelle Änderungen.
+   * Stage-Dateien via git.add, dann git.commit.
    */
   async commit(opts: {
     message: string;
@@ -147,6 +170,12 @@ export class GitRepo implements RepoFs {
     authorEmail: string;
     files?: string[];
   }): Promise<string> {
+    // Optional: nur bestimmte Dateien adden
+    if (opts.files && opts.files.length > 0) {
+      for (const file of opts.files) {
+        await git.add({ fs: this.fs, dir: '/', filepath: file });
+      }
+    }
     return git.commit({
       fs: this.fs,
       dir: '/',
@@ -154,8 +183,7 @@ export class GitRepo implements RepoFs {
       author: {
         name: opts.authorName,
         email: opts.authorEmail
-      },
-      update: opts.files || []
+      }
     });
   }
 
@@ -171,24 +199,30 @@ export class GitRepo implements RepoFs {
   }
 
   /**
-   * Gibt die aktuellen Staging-Statusänderungen zurück.
+   * Gibt die aktuellen Statusänderungen zurück.
+   * Nutzt git.listFiles als Approximation (isomorphic-git hat kein
+   * directory-status; git.status benötigt einen konkreten filepath).
    */
-  async status(): Promise<
-    { file: string; before: number | null; after: number | null }[]
-  > {
-    return git.status({ fs: this.fs, dir: '/' });
+  async status(): Promise<StatusEntry[]> {
+    try {
+      const files = await git.listFiles({ fs: this.fs, dir: '/' });
+      return files.map(file => ({
+        file,
+        before: null,
+        after: null
+      }));
+    } catch {
+      return [];
+    }
   }
 
   /**
    * Gibt die Remote-URL zurück.
    */
   async getRemoteUrl(remote = 'origin'): Promise<string | undefined> {
-    return git.getConfigValue({
-      fs: this.fs,
-      dir: '/',
-      property: 'url',
-      searchKey: `remote "${remote}"`
-    });
+    const remotes = await git.listRemotes({ fs: this.fs, dir: '/' });
+    const entry = remotes.find(r => r.remote === remote);
+    return entry?.url;
   }
 }
 

@@ -4,7 +4,7 @@ import { initDb, getAllAssets, getAssetById } from './db';
 import { mirrorAssetFile } from './mirror';
 
 describe('mirrorAssetFile', () => {
-  let db: typeof import('sql.js').Database;
+  let db: import('sql.js').Database;
 
   beforeAll(async () => {
     const SQL = await initSqlJs();
