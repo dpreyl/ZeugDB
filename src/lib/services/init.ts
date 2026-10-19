@@ -1,9 +1,11 @@
-import { getAssetStore } from '../stores/assets.store.svelte';
+import { getAssetStore, type SerializedAsset } from '../stores/assets.store.svelte';
 import { getTypesStore } from '../stores/types.store.svelte';
 import { getLocationsStore } from '../stores/locations.store.svelte';
 import type { AssetRow } from '../db';
 import type { TypeDefinition } from '../parser/types';
 import type { Location } from '../parser/types';
+import { serializeAsset } from '../parser/asset.writer';
+import type { ParsedAsset } from '../parser/types';
 
 const ASSETS_KEY = 'zeugdb:assets';
 const TYPES_KEY = 'zeugdb:types';
@@ -120,6 +122,30 @@ export function persistStore(): void {
   } catch {
     // Speicher voll — ignorieren
   }
+}
+
+/**
+ * Serialisiert ein Asset aus dem Store-Format in das `.asset`-Dateiformat.
+ * Wird für Git-Commits verwendet.
+ */
+export function serializeAssetFile(asset: SerializedAsset): string {
+  const direct: Record<string, string> = {
+    id: asset.id,
+    type: asset.type,
+    ...(asset.location && { location: asset.location }),
+    ...(asset.erstellt && { erstellt: asset.erstellt }),
+    ...(asset.geaendert && { geaendert: asset.geaendert })
+  };
+  // Zusätzliche Felder
+  if (asset.hersteller) direct.hersteller = asset.hersteller;
+  if (asset.modell) direct.modell = asset.modell;
+  if (asset.seriennummer) direct.seriennummer = asset.seriennummer;
+  if (asset.inventarnummer) direct.inventarnummer = asset.inventarnummer;
+  if (asset.zustand) direct.zustand = asset.zustand;
+  if (asset.notizen) direct.notizen = asset.notizen;
+
+  const parsed: ParsedAsset = { direct, blocks: {} };
+  return serializeAsset(parsed);
 }
 
 function seedDemoData(): void {

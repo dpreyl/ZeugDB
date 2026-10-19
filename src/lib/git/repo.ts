@@ -224,6 +224,94 @@ export class GitRepo implements RepoFs {
     const entry = remotes.find(r => r.remote === remote);
     return entry?.url;
   }
+
+  /**
+   * Erstellt einen neuen Branch am aktuellen HEAD (ohne Checkout).
+   */
+  async createBranch(ref: string): Promise<void> {
+    await git.branch({
+      fs: this.fs,
+      dir: '/',
+      ref,
+      checkout: false
+    });
+  }
+
+  /**
+   * Wechselt zu einem bestehenden Branch.
+   */
+  async checkoutBranch(ref: string): Promise<void> {
+    await git.checkout({
+      fs: this.fs,
+      dir: '/',
+      ref,
+      force: false
+    });
+  }
+
+  /**
+   * Gibt den aktuellen Branch-Namen zurück.
+   */
+  async getCurrentBranch(): Promise<string | undefined> {
+    return git.currentBranch({ fs: this.fs, dir: '/' });
+  }
+
+  /**
+   * Führt einen Merge durch.
+   * Bei squash=true wird ein Squash-Merge als Commit durchgeführt.
+   */
+  async mergeBranch(opts: {
+    branch: string;
+    authorName: string;
+    authorEmail: string;
+    squash?: boolean;
+    message?: string;
+  }): Promise<void> {
+    await git.merge({
+      fs: this.fs,
+      dir: '/',
+      theirs: opts.branch,
+      author: {
+        name: opts.authorName,
+        email: opts.authorEmail
+      },
+      fastForward: 'ff',
+      squash: opts.squash ?? false,
+      commitOptions: opts.squash ? {
+        message: opts.message ?? `Squash merge ${opts.branch}`
+      } : undefined
+    });
+  }
+
+  /**
+   * Fetcht Änderungen vom Remote ohne Merge.
+   */
+  async fetchFromRemote(opts: {
+    remote?: string;
+    auth: { username: string; token: string };
+  }): Promise<void> {
+    await git.fetch({
+      fs: this.fs,
+      http: HTTP,
+      dir: '/',
+      remote: opts.remote ?? 'origin',
+      headers: {
+        'Authorization': `Basic ${btoa(`${opts.auth.username}:${opts.auth.token}`)}`
+      }
+    });
+  }
+
+  /**
+   * Löscht einen lokalen Branch.
+   */
+  async deleteBranch(ref: string): Promise<void> {
+    await git.deleteBranch({
+      fs: this.fs,
+      dir: '/',
+      ref,
+      force: true
+    });
+  }
 }
 
 /**

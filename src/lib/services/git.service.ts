@@ -7,7 +7,8 @@ import { getLocationsStore } from '../stores/locations.store.svelte';
 import { parseAsset } from '../parser/asset.parser';
 import { parseType } from '../parser/type.parser';
 import { parseLocation } from '../parser/location.parser';
-import { persistStore } from './init';
+import { persistStore, serializeAssetFile } from './init';
+import { getEditMode } from '../stores/edit-mode.svelte';
 
 /**
  * Persistierte Git-Konfiguration.
@@ -256,4 +257,133 @@ async function syncGitFsToStores(repo: GitRepo): Promise<void> {
   }
 
   persistStore();
+}
+
+/**
+ * Erzeugt einen Edit-Branch und wechselt dorthin.
+ */
+export async function createEditBranch(
+  username: string,
+  email: string,
+  branchName: string
+): Promise<void> {
+  const repo = await getGitRepo();
+  await repo.createBranch(branchName);
+  await repo.checkoutBranch(branchName);
+}
+
+/**
+ * Serialisiert alle Assets als .asset-Dateien im Git-FS
+ * und erstellt einen Commit.
+ */
+export async function commitAllToGit(
+  message: string,
+  authorName: string,
+  authorEmail: string
+): Promise<string> {
+  const repo = await getGitRepo();
+  const store = getAssetStore();
+
+  for (const row of store.all) {
+    const asset = store.findFull(row.id);
+    if (asset) {
+      const content = serializeAssetFile(asset);
+      await repo.writeFile(`assets/${row.id}.asset`, content);
+    }
+  }
+
+  return repo.commit({
+    message,
+    authorName,
+    authorEmail
+  });
+}
+
+/**
+ * Vollständiger Sync-Workflow:
+ * 1. Fetch vom Remote
+ * 2. Zu main wechseln
+ * 3. Squash-Merge des Edit-Branches
+ * 4. Push nach origin/main
+ * 5. Edit-Branch löschen
+ * 6. Stores aus Git-FS neu laden
+ * 7. Edit-Modus beenden
+ */
+export async function syncEditBranch(
+  config: GitConfig,
+  authorName: string,
+  authorEmail: string,
+  onprogress?: (progress: GitProgress) => void
+): Promise<void> {
+  const repo = await getGitRepo();
+  const editMode = getEditMode();
+  const branch = editMode.branch;
+  if (!branch) throw new Error('Kein Edit-Branch aktiv');
+
+  onprogress?.({ message: 'Hole Änderungen vom Server...' });
+
+  // 1. Fetch
+  await repo.fetchFromRemote({ auth: { username: config.username, token: config.token } });
+
+  // 2. Zu main wechseln
+  onprogress?.({ message: 'Wechsle zu main...' });
+  await repo.checkoutBranch('main');
+
+  // 3. Squash-Merge
+  onprogress?.({ message: `Merge ${branch} → main (squash)...` });
+  try {
+    await repo.mergeBranch({
+      branch,
+      authorName,
+      authorEmail,
+      squash: true,
+      message: `Squash merge: ${branch}`
+    });
+  } catch (err: any) {
+    throw new Error(`Merge-Konflikt: ${err.message || 'Unbekannter Fehler'}`);
+  }
+
+  // 4. Push nach origin/main
+  onprogress?.({ message: 'Schiebe Änderungen zum Server...' });
+  await repo.push({
+    auth: { username: config.username, token: config.token },
+    branch: 'main',
+    onprogress
+  });
+
+  // 5. Edit-Branch löschen
+  onprogress?.({ message: 'Räume Edit-Branch auf...' });
+  try {
+    await repo.deleteBranch(branch);
+  } catch {
+    // Ignorieren
+  }
+
+  // 6. Stores aus Git-FS neu laden
+  onprogress?.({ message: 'Lade Daten aus Git-Repo...' });
+  await syncGitFsToStores(repo);
+
+  // 7. Edit-Modus beenden
+  editMode.finishEdit();
+}
+
+/**
+ * Verwirft Änderungen: Wechselt zurück zu main und löscht Edit-Branch.
+ */
+export async function discardEditBranch(): Promise<void> {
+  const repo = await getGitRepo();
+  const editMode = getEditMode();
+  const branch = editMode.branch;
+
+  if (branch) {
+    await repo.checkoutBranch('main');
+    try {
+      await repo.deleteBranch(branch);
+    } catch {
+      // Ignorieren
+    }
+  }
+
+  await syncGitFsToStores(repo);
+  editMode.discard();
 }
