@@ -6,12 +6,15 @@
     loadGitConfig,
     createEditBranch,
     syncEditBranch,
-    discardEditBranch
+    discardEditBranch,
+    fetchRemote
   } from '$lib/services/git.service';
+  import { getSyncMeta } from '$lib/stores/sync-meta.svelte';
 
   initializeStore();
 
   const editMode = getEditMode();
+  const syncMeta = getSyncMeta();
 
   let loading = $state(false);
   let progress = $state<string | null>(null);
@@ -81,6 +84,25 @@
       progress = null;
     }
   }
+
+  async function handleFetchRemote() {
+    loading = true;
+    error = null;
+    progress = 'Hole Änderungen...';
+    try {
+      const config = loadGitConfig();
+      if (!config) throw new Error('Git-Verbindung nicht konfiguriert');
+      const username = editMode.username || config.username || 'user';
+      const email = `${username}@zeugdb.local`;
+      await fetchRemote(config, username, email, (p) => {
+        progress = p.message;
+      });
+    } catch (e: unknown) {
+      error = e instanceof Error ? e.message : 'Holen fehlgeschlagen';
+    } finally {
+      loading = false;
+    }
+  }
 </script>
 
 <div class="min-h-screen bg-gray-50">
@@ -105,6 +127,13 @@
         </div>
         <div class="flex gap-2">
           <button
+            onclick={handleFetchRemote}
+            disabled={loading}
+            class="px-3 py-1 text-sm border border-blue-300 text-blue-700 rounded-md hover:bg-blue-50 disabled:opacity-50"
+          >
+            {loading ? progress ?? 'Holt...' : 'Holen'}
+          </button>
+          <button
             onclick={handleDiscard}
             disabled={loading}
             class="px-3 py-1 text-sm border border-red-300 text-red-700 rounded-md hover:bg-red-50 disabled:opacity-50"
@@ -125,14 +154,26 @@
         <div class="flex items-center gap-3 text-sm">
           <span class="inline-block w-2 h-2 rounded-full bg-green-500"></span>
           <span class="text-gray-500">Read-Only</span>
+          {#if syncMeta.getFormattedTimestamp()}
+            <span class="text-gray-400 text-xs">(Zuletzt synchronisiert: {syncMeta.getFormattedTimestamp()})</span>
+          {/if}
         </div>
-        <button
-          onclick={handleEnterEditMode}
-          disabled={loading}
-          class="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loading ? progress ?? 'Lädt...' : 'Bearbeiten'}
-        </button>
+        <div class="flex gap-2">
+          <button
+            onclick={handleFetchRemote}
+            disabled={loading}
+            class="px-3 py-1 text-sm border border-blue-300 text-blue-700 rounded-md hover:bg-blue-50 disabled:opacity-50"
+          >
+            {loading ? progress ?? 'Holt...' : 'Holen'}
+          </button>
+          <button
+            onclick={handleEnterEditMode}
+            disabled={loading}
+            class="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? progress ?? 'Lädt...' : 'Bearbeiten'}
+          </button>
+        </div>
       </div>
     {/if}
 

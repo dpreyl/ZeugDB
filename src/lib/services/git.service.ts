@@ -9,6 +9,7 @@ import { parseType } from '../parser/type.parser';
 import { parseLocation } from '../parser/location.parser';
 import { persistStore, serializeAssetFile } from './init';
 import { getEditMode } from '../stores/edit-mode.svelte';
+import { getSyncMeta } from '../stores/sync-meta.svelte';
 
 /**
  * Persistierte Git-Konfiguration.
@@ -144,6 +145,7 @@ export async function pullToStores(
   });
   // Nach dem Pull die Dateien aus dem Git-FS in die Stores laden
   await syncGitFsToStores(repo);
+  getSyncMeta().update(new Date(), 'pull');
 }
 
 /**
@@ -365,6 +367,9 @@ export async function syncEditBranch(
 
   // 7. Edit-Modus beenden
   editMode.finishEdit();
+
+  // Sync-Timestamp aktualisieren
+  getSyncMeta().update(new Date(), 'sync');
 }
 
 /**
@@ -386,4 +391,57 @@ export async function discardEditBranch(): Promise<void> {
 
   await syncGitFsToStores(repo);
   editMode.discard();
+}
+
+/**
+ * Fetcht Änderungen vom Remote und zieht sie in den aktuellen Branch.
+ * Im Edit-Modus: Holt in den Edit-Branch (kein Merge von main).
+ * Im Read-Only-Modus: Holt in main.
+ * Aktualisiert die Stores und den Sync-Timestamp.
+ */
+export async function fetchRemote(
+  config: GitConfig,
+  authorName: string,
+  authorEmail: string,
+  onprogress?: (progress: GitProgress) => void
+): Promise<void> {
+  const repo = await getGitRepo();
+  const editMode = getEditMode();
+  const currentBranch = editMode.isEditing ? editMode.branch : 'main';
+
+  onprogress?.({ message: 'Hole Änderungen vom Server...' });
+
+  // 1. Fetch — aktualisiert Remote-refs ohne lokale Änderungen
+  await repo.fetchFromRemote({
+    auth: { username: config.username, token: config.token }
+  });
+
+  // 2. Pull in den aktuellen Branch (merge remote/main into current)
+  onprogress?.({ message: 'Integriere Änderungen...' });
+  if (editMode.isEditing && currentBranch) {
+    // Im Edit-Branch: merge origin/main ein
+    try {
+      await repo.mergeBranch({
+        branch: 'origin/main',
+        authorName,
+        authorEmail
+      });
+    } catch (err: any) {
+      throw new Error(`Merge-Konflikt: ${err.message || 'Unbekannter Fehler'}`);
+    }
+  } else {
+    // Auf main: einfacher pull
+    await repo.pull({
+      auth: { username: config.username, token: config.token },
+      author: { name: authorName, email: authorEmail },
+      onprogress
+    });
+  }
+
+  // 3. Stores aktualisieren
+  onprogress?.({ message: 'Lade Daten aus Git-Repo...' });
+  await syncGitFsToStores(repo);
+
+  // 4. Sync-Timestamp setzen
+  getSyncMeta().update(new Date(), 'pull');
 }

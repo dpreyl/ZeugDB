@@ -8,6 +8,7 @@ import {
   isRepoInitialized,
   getSyncStatus,
   resetGitRepo,
+  fetchRemote,
   type GitConfig
 } from './git.service';
 import * as repoModule from '$lib/git/repo';
@@ -189,6 +190,119 @@ describe('git.service — Commit', () => {
 
     const sha = await commitChanges('Test', 'Author', 'a@b.com');
     expect(sha).toBe('deadbeef');
+  });
+});
+
+describe('git.service — fetchRemote', () => {
+  beforeEach(async () => {
+    resetGitRepo();
+    vi.spyOn(repoModule, 'openGitDb').mockResolvedValue({} as IDBDatabase);
+    // Mock edit-mode
+    const editModule = await import('$lib/stores/edit-mode.svelte');
+    vi.spyOn(editModule, 'getEditMode').mockReturnValue({
+      isEditing: false,
+      branch: null,
+      username: null,
+      enterEditMode: () => {},
+      discard: () => {},
+      finishEdit: () => {}
+    } as unknown as import('$lib/stores/edit-mode.svelte').EditMode);
+    // Mock sync-meta
+    const syncMetaModule = await import('$lib/stores/sync-meta.svelte');
+    vi.spyOn(syncMetaModule, 'getSyncMeta').mockReturnValue({
+      lastSyncAt: null,
+      lastSyncType: null,
+      update: vi.fn(),
+      getFormattedTimestamp: () => null,
+      reset: vi.fn()
+    } as unknown as import('$lib/stores/sync-meta.svelte').SyncMetaStore);
+    // Mock syncGitFsToStores via init.persistStore
+    const initModule = await import('./init');
+    vi.spyOn(initModule, 'persistStore').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    resetGitRepo();
+    vi.restoreAllMocks();
+  });
+
+  it('fetcht und pullt im Read-Only-Modus', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(undefined);
+    const mockPull = vi.fn().mockResolvedValue(undefined);
+    const mockReaddir = vi.fn().mockResolvedValue([]);
+    vi.spyOn(repoModule, 'GitRepo').mockImplementation(() => ({
+      fetchFromRemote: mockFetch,
+      pull: mockPull,
+      readdir: mockReaddir
+    }) as unknown as repoModule.GitRepo);
+
+    const config: GitConfig = {
+      url: 'http://example.com/repo.git',
+      username: 'testuser',
+      token: 'secret-token'
+    };
+    await fetchRemote(config, 'Author', 'author@example.com');
+
+    expect(mockFetch).toHaveBeenCalled();
+    expect(mockPull).toHaveBeenCalled();
+  });
+
+  it('mergt origin/main im Edit-Modus', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(undefined);
+    const mockMerge = vi.fn().mockResolvedValue(undefined);
+    const mockReaddir = vi.fn().mockResolvedValue([]);
+    vi.spyOn(repoModule, 'GitRepo').mockImplementation(() => ({
+      fetchFromRemote: mockFetch,
+      mergeBranch: mockMerge,
+      readdir: mockReaddir
+    }) as unknown as repoModule.GitRepo);
+
+    // Edit-Mode aktivieren
+    const editModule = await import('$lib/stores/edit-mode.svelte');
+    vi.spyOn(editModule, 'getEditMode').mockReturnValue({
+      isEditing: true,
+      branch: 'edit/user-20250101',
+      username: 'testuser',
+      enterEditMode: () => {},
+      discard: () => {},
+      finishEdit: () => {}
+    } as unknown as import('$lib/stores/edit-mode.svelte').EditMode);
+
+    const config: GitConfig = {
+      url: 'http://example.com/repo.git',
+      username: 'testuser',
+      token: 'secret-token'
+    };
+    await fetchRemote(config, 'Author', 'author@example.com');
+
+    expect(mockFetch).toHaveBeenCalled();
+    expect(mockMerge).toHaveBeenCalledWith(
+      expect.objectContaining({ branch: 'origin/main' })
+    );
+  });
+
+  it('aktualisiert den Sync-Meta-Timestamp', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(undefined);
+    const mockPull = vi.fn().mockResolvedValue(undefined);
+    const mockReaddir = vi.fn().mockResolvedValue([]);
+    vi.spyOn(repoModule, 'GitRepo').mockImplementation(() => ({
+      fetchFromRemote: mockFetch,
+      pull: mockPull,
+      readdir: mockReaddir
+    }) as unknown as repoModule.GitRepo);
+
+    const syncMetaModule = await import('$lib/stores/sync-meta.svelte');
+    const syncMeta = syncMetaModule.getSyncMeta();
+    const updateSpy = vi.spyOn(syncMeta, 'update');
+
+    const config: GitConfig = {
+      url: 'http://example.com/repo.git',
+      username: 'testuser',
+      token: 'secret-token'
+    };
+    await fetchRemote(config, 'Author', 'author@example.com');
+
+    expect(updateSpy).toHaveBeenCalledWith(expect.any(Date), 'pull');
   });
 });
 
