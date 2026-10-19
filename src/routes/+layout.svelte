@@ -4,13 +4,15 @@
 
   initializeStore();
 
-  // Service Worker für Offline-Nutzung registrieren
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch(err => {
-        console.error('SW-Registrierung fehlgeschlagen:', err);
+  // Service Worker für Offline-Nutzung sofort registrieren
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(reg => {
+        console.log('[SW] registriert:', reg.scope);
+      })
+      .catch(err => {
+        console.warn('[SW] Registrierung fehlgeschlagen:', err);
       });
-    });
   }
 </script>
 
