@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { base } from '$app/paths';
   import '../app.css';
   import { initializeStore } from '$lib/services/init';
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
@@ -24,7 +25,7 @@
 
   // Service Worker für Offline-Nutzung sofort registrieren
   if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    navigator.serviceWorker.register(`${base}/sw.js`, { scope: `${base}/`, type: 'module' })
       .then(reg => {
         console.log('[SW] registriert:', reg.scope);
       })
@@ -112,10 +113,10 @@
     <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
       <h1 class="text-lg font-semibold text-gray-900">ZeugDB</h1>
       <nav class="flex gap-4 text-sm">
-        <a href="/" class="text-gray-600 hover:text-gray-900">Assets</a>
-        <a href="/types" class="text-gray-600 hover:text-gray-900">Typen</a>
-        <a href="/locations" class="text-gray-600 hover:text-gray-900">Standorte</a>
-        <a href="/settings" class="text-gray-600 hover:text-gray-900">Einstellungen</a>
+        <a href="{base}/" class="text-gray-600 hover:text-gray-900">Assets</a>
+        <a href="{base}/types" class="text-gray-600 hover:text-gray-900">Typen</a>
+        <a href="{base}/locations" class="text-gray-600 hover:text-gray-900">Standorte</a>
+        <a href="{base}/settings" class="text-gray-600 hover:text-gray-900">Einstellungen</a>
       </nav>
     </div>
 

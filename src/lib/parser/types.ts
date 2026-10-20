@@ -45,11 +45,18 @@ export type ComponentDefinition = {
   fields: FieldType[];
 };
 
+export type LocationArt = 'punkt' | 'raum' | 'leitung';
+
+export type Coord = { lat: number; lon: number };
+
 export type Location = {
   id?: string;
   name?: string;
   eltern?: string;
+  art?: LocationArt;
   lat?: number;
   lon?: number;
+  polygon?: Coord[];
+  route?: Coord[];
 };
 

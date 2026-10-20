@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { base } from '$app/paths';
   import type { PageData } from './$types';
   import { getAssetStore } from '$lib/stores/assets.store.svelte';
+  import { getLocationsStore } from '$lib/stores/locations.store.svelte';
   import { persistStore } from '$lib/services/init';
 
   let { data }: { data: PageData } = $props();
@@ -8,6 +10,7 @@
   let deleted = $state(false);
 
   const zustandOptionen = ['neu', 'einwandfrei', 'defekt', 'in_reparatur', 'verschrottet'];
+  const locations = getLocationsStore();
 
   function handleSave(form: Event) {
     const fd = new FormData((form.target as HTMLFormElement));
@@ -33,13 +36,13 @@
 
 <form class="max-w-2xl space-y-6" onsubmit={handleSave}>
   <div class="flex items-center gap-3">
-    <a href="/" class="text-sm text-gray-500 hover:text-gray-700">← Zurück</a>
+    <a href="{base}/" class="text-sm text-gray-500 hover:text-gray-700">← Zurück</a>
     <h2 class="text-xl font-semibold text-gray-900">Asset {data.id}</h2>
   </div>
 
   {#if deleted}
     <div class="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800" role="status">
-      Asset gelöscht. <a href="/" class="underline">Zurück zur Übersicht</a>
+      Asset gelöscht. <a href="{base}/" class="underline">Zurück zur Übersicht</a>
     </div>
   {:else if saved}
     <div class="p-3 bg-green-50 border border-green-200 rounded-md text-sm text-green-800" role="status">
@@ -73,6 +76,17 @@
         <label for="inventarnummer" class="block text-sm font-medium text-gray-700 mb-1">Inventarnummer</label>
         <input id="inventarnummer" name="inventarnummer" type="text" value={data.inventarnummer || ''} class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
       </div>
+    </div>
+
+    <div>
+      <label for="location" class="block text-sm font-medium text-gray-700 mb-1">Standort</label>
+      <select id="location" name="location" value={data.location ?? ''} class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        <option value="">Kein Standort</option>
+        {#each locations.all as item}
+          <option value={item.id}>{item.name ?? item.id}</option>
+        {/each}
+      </select>
+      <a href="{base}/locations" class="mt-1 inline-block text-xs text-blue-600 hover:underline">Standort mit GPS-Koordinaten verwalten</a>
     </div>
 
     <div>

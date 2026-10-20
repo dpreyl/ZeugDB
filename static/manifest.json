@@ -2,19 +2,20 @@
   "name": "ZeugDB",
   "short_name": "ZeugDB",
   "description": "Offline-fähige Inventar-Verwaltung",
-  "start_url": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#f9fafb",
   "theme_color": "#1f2937",
   "orientation": "any",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "./icon-192.png",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "/icon-512.png",
+      "src": "./icon-512.png",
       "type": "image/png",
       "sizes": "512x512"
     }

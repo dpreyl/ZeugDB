@@ -1,26 +1,38 @@
+import {
+  getTileCacheLifetime,
+  isFreshTile,
+  isOpenStreetMapTileRequest,
+  TILE_CACHE_LIMIT,
+  TILE_CACHE_NAME
+} from './tile-cache.js';
+import { appPath, getAppBase } from './sw-paths.js';
+
 /* ZeugDB Service Worker — Offline-First
  *
- * Install: holt '/', parst das HTML nach allen <script src> und <link href>
+ * Install: holt die App-Startseite, parst das HTML nach <script src> und <link href>
  *          Referenzen und cached die komplette App. Dann sofort aktivieren.
  * Activate: löscht alte Caches, übernimmt Kontrolle aller Clients.
  * Fetch:
- *   - Navigation → Cache, Fallback auf '/'
+ *   - Navigation → Cache, Fallback auf die App-Startseite
+ *   - OpenStreetMap-Kacheln → TILE_CACHE-First, dann Netzwerk
  *   - .js/.css / _app/ → Cache-First, dann Network, Fallback auf Cache
- *   - Sonst → Network-First, Fallback auf Cache, dann '/' (Safety-Net)
+ *   - Sonst → Network-First, Fallback auf Cache, dann App-Startseite
  */
-const CACHE = 'zeugdb-v3';
+const CACHE = 'zeugdb-v5';
+const APP_BASE = getAppBase(self.registration.scope);
+const APP_ROOT = appPath(APP_BASE, '/');
 
 /**
  * Holt die Index-Seite, extrahiert alle JS/CSS/Asset-URLs und
  * cached die komplette App in einem Schritt.
  */
 async function precacheApp(cache) {
-  // 1. '/' holen
-  const indexResp = await fetch('/');
+  // 1. App-Startseite holen
+  const indexResp = await fetch(APP_ROOT);
   const html = await indexResp.text();
 
   // 2. Aus dem HTML alle referenzierten Assets extrahieren
-  const urls = new Set(['/']);
+  const urls = new Set([APP_ROOT]);
 
   // <script src="...">
   const scriptMatches = html.match(/<script src="([^"]+)"/g) || [];
@@ -37,10 +49,10 @@ async function precacheApp(cache) {
   }
 
   // Statische Assets
-  urls.add('/manifest.json');
-  urls.add('/icon-192.png');
-  urls.add('/icon-512.png');
-  urls.add('/sw.js');
+  urls.add(appPath(APP_BASE, '/manifest.json'));
+  urls.add(appPath(APP_BASE, '/icon-192.png'));
+  urls.add(appPath(APP_BASE, '/icon-512.png'));
+  urls.add(appPath(APP_BASE, '/sw.js'));
 
   // 3. Alles parallel cachen
   await cache.addAll(Array.from(urls));
@@ -65,7 +77,8 @@ self.addEventListener('activate', event => {
       // 3. Alte Caches aufräumen
       return caches.keys().then(all =>
         Promise.all(
-          all.filter(name => name !== CACHE).map(name => caches.delete(name))
+          all.filter(name => name !== CACHE && name !== TILE_CACHE_NAME)
+            .map(name => caches.delete(name))
         )
       );
     })
@@ -77,12 +90,18 @@ self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Nur tatsächlich angeforderte OSM-Kacheln cachen; es findet kein Vorladen statt.
+  if (isOpenStreetMapTileRequest(request)) {
+    event.respondWith(serveMapTile(request));
+    return;
+  }
+
   // --- Navigation (Seitenwechsel) ---
   if (request.mode === 'navigate' ||
       (request.method === 'GET' && request.headers.get('accept')?.includes('text/html'))) {
     event.respondWith(
       caches.match(request)
-        .then(cached => cached || caches.match('/'))
+        .then(cached => cached || caches.match(APP_ROOT))
         .then(resp =>
           resp || fetch(request)
             .then(net => {
@@ -90,7 +109,7 @@ self.addEventListener('fetch', event => {
               caches.open(CACHE).then(c => c.put(request, clone));
               return net;
             })
-            .catch(() => caches.match('/'))
+            .catch(() => caches.match(APP_ROOT))
         )
     );
     return;
@@ -98,7 +117,8 @@ self.addEventListener('fetch', event => {
 
   // --- Statische App-Assets (.js, .css, _app/, assets/) ---
   if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css') ||
-      url.pathname.startsWith('/_app/') || url.pathname.startsWith('/assets/')) {
+      url.pathname.startsWith(appPath(APP_BASE, '/_app/')) ||
+      url.pathname.startsWith(appPath(APP_BASE, '/assets/'))) {
     event.respondWith(
       caches.match(request)
         .then(cached => cached || fetch(request))
@@ -110,7 +130,7 @@ self.addEventListener('fetch', event => {
           }
           return resp;
         })
-        .catch(() => caches.match('/')) // Safety-Net
+        .catch(() => caches.match(APP_ROOT)) // Safety-Net
     );
     return;
   }
@@ -126,6 +146,57 @@ self.addEventListener('fetch', event => {
         return net;
       })
       .catch(() => caches.match(request))
-      .catch(() => caches.match('/')) // Safety-Net: zeige App statt Fehler
+      .catch(() => caches.match(APP_ROOT)) // Safety-Net: zeige App statt Fehler
   );
 });
+
+async function serveMapTile(request) {
+  const cache = await caches.open(TILE_CACHE_NAME);
+  const cached = await cache.match(request);
+  if (cached && isFreshTile(cached)) return cached;
+
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const lifetime = getTileCacheLifetime(response);
+      if (lifetime !== null && response.type !== 'opaque') {
+        const headers = new Headers(response.headers);
+        const cachedAt = Date.now();
+        headers.set('X-ZeugDB-Cached-At', String(cachedAt));
+        headers.set('X-ZeugDB-Cache-Expires-At', String(cachedAt + lifetime));
+        await cache.put(request, new Response(response.clone().body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers
+        }));
+        await limitTileCache(cache);
+      }
+    }
+
+    return !response.ok && cached ? cached : response;
+  } catch {
+    if (cached) return cached;
+    return new Response('', {
+      status: 503,
+      statusText: 'Offline: Kartenausschnitt nicht gespeichert'
+    });
+  }
+}
+
+async function limitTileCache(cache) {
+  const requests = await cache.keys();
+  if (requests.length <= TILE_CACHE_LIMIT) return;
+
+  const entries = await Promise.all(requests.map(async request => {
+    const response = await cache.match(request);
+    return {
+      request,
+      cachedAt: Number(response?.headers.get('X-ZeugDB-Cached-At')) || 0
+    };
+  }));
+  entries.sort((a, b) => a.cachedAt - b.cachedAt);
+
+  await Promise.all(entries
+    .slice(0, entries.length - TILE_CACHE_LIMIT)
+    .map(({ request }) => cache.delete(request)));
+}

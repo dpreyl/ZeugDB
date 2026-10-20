@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { base } from '$app/paths';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -10,7 +11,7 @@
       <h2 class="text-xl font-semibold text-gray-900">Assets</h2>
       <p class="text-sm text-gray-500">{data.assets.length} Einträge</p>
     </div>
-    <a href="/assets/new" class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-block">
+    <a href="{base}/assets/new" class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-block">
       + Neues Asset
     </a>
   </div>
@@ -34,7 +35,7 @@
           <td class="px-4 py-2 text-gray-600">{asset.location}</td>
           <td class="px-4 py-2 text-gray-500">{asset.geaendert}</td>
           <td class="px-4 py-2 text-right">
-            <a href="/assets/{asset.id}" class="text-blue-600 hover:underline">Öffnen</a>
+            <a href="{base}/assets/{asset.id}" class="text-blue-600 hover:underline">Öffnen</a>
           </td>
         </tr>
         {/each}

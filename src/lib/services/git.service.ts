@@ -7,6 +7,7 @@ import { getLocationsStore } from '../stores/locations.store.svelte';
 import { parseAsset } from '../parser/asset.parser';
 import { parseType } from '../parser/type.parser';
 import { parseLocation } from '../parser/location.parser';
+import { syncLocationsToGit } from './location-git-sync';
 import { persistStore, serializeAssetFile } from './init';
 import { getEditMode } from '../stores/edit-mode.svelte';
 import { getSyncMeta } from '../stores/sync-meta.svelte';
@@ -282,23 +283,43 @@ export async function commitAllToGit(
   message: string,
   authorName: string,
   authorEmail: string
-): Promise<string> {
+): Promise<string | null> {
   const repo = await getGitRepo();
-  const store = getAssetStore();
+  const assets = getAssetStore();
+  const locations = getLocationsStore();
+  const changedFiles: string[] = [];
 
-  for (const row of store.all) {
-    const asset = store.findFull(row.id);
+  for (const row of assets.all) {
+    const asset = assets.findFull(row.id);
     if (asset) {
       const content = serializeAssetFile(asset);
-      await repo.writeFile(`assets/${row.id}.asset`, content);
+      const path = `assets/${row.id}.asset`;
+      if (await readFileOrNull(repo, path) !== content) {
+        await repo.writeFile(path, content);
+        changedFiles.push(path);
+      }
     }
   }
 
+  const locationChanges = await syncLocationsToGit(repo, locations.all);
+  changedFiles.push(...locationChanges.changedFiles);
+
+  if (changedFiles.length === 0 && locationChanges.deletedFiles.length === 0) return null;
   return repo.commit({
     message,
     authorName,
-    authorEmail
+    authorEmail,
+    files: changedFiles,
+    deletedFiles: locationChanges.deletedFiles
   });
+}
+
+async function readFileOrNull(repo: GitRepo, path: string): Promise<string | null> {
+  try {
+    return await repo.readFile(path);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -321,6 +342,13 @@ export async function syncEditBranch(
   const editMode = getEditMode();
   const branch = editMode.branch;
   if (!branch) throw new Error('Kein Edit-Branch aktiv');
+
+  onprogress?.({ message: 'Speichere Standort- und Asset-Änderungen...' });
+  await commitAllToGit(
+    `Daten-Sync ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`,
+    authorName,
+    authorEmail
+  );
 
   onprogress?.({ message: 'Hole Änderungen vom Server...' });
 

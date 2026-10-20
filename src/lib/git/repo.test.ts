@@ -2,22 +2,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock isomorphic-git
 vi.mock('isomorphic-git/lightningfs.js', () => ({
-  LightningFS: vi.fn().mockImplementation(() => ({
-    writeFile: vi.fn(),
-    readFile: vi.fn(),
-    readdir: vi.fn(),
-    mkdir: vi.fn(),
-    rmdir: vi.fn(),
-    unlink: vi.fn(),
-    stat: vi.fn(),
-    lstat: vi.fn(),
-    appendFile: vi.fn(),
-  }))
+  LightningFS: class {
+    writeFile = vi.fn();
+    readFile = vi.fn();
+    readdir = vi.fn();
+    mkdir = vi.fn();
+    rmdir = vi.fn();
+    unlink = vi.fn();
+    stat = vi.fn();
+    lstat = vi.fn();
+    appendFile = vi.fn();
+  }
 }));
 
 // Hole die echten Module um die Mocks zu patchen
 vi.mock('isomorphic-git', async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual = (await importOriginal()) as object;
   return {
     ...actual,
     init: vi.fn().mockResolvedValue(undefined),
@@ -27,8 +27,10 @@ vi.mock('isomorphic-git', async (importOriginal) => {
     commit: vi.fn().mockResolvedValue('abc123'),
     currentBranch: vi.fn().mockResolvedValue('main'),
     listFiles: vi.fn().mockResolvedValue([]),
+    statusMatrix: vi.fn().mockResolvedValue([]),
     listRemotes: vi.fn().mockResolvedValue([{ remote: 'origin', url: 'http://test/repo' }]),
     add: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
     branch: vi.fn().mockResolvedValue(undefined),
     checkout: vi.fn().mockResolvedValue(undefined),
     merge: vi.fn().mockResolvedValue(undefined),
@@ -93,5 +95,67 @@ describe('GitRepo Branch-Management', () => {
       message: 'Squash merge edit/test-2025'
     });
     expect(git.merge).toHaveBeenCalled();
+  });
+});
+
+describe('GitRepo Dateiverwaltung', () => {
+  let repo: GitRepo;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repo = new GitRepo({} as IDBDatabase);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('legt das Elternverzeichnis vor dem Schreiben an', async () => {
+    const fs = repo.getFs() as unknown as {
+      mkdir: (path: string, options: { recursive: boolean }) => Promise<void>;
+      writeFile: (path: string, data: Uint8Array) => Promise<void>;
+    };
+    fs.mkdir = vi.fn().mockResolvedValue(undefined);
+    fs.writeFile = vi.fn().mockResolvedValue(undefined);
+    const mkdir = vi.spyOn(fs, 'mkdir');
+    const writeFile = vi.spyOn(fs, 'writeFile');
+
+    await repo.writeFile('locations/raum-101.location', 'id: raum-101');
+
+    expect(mkdir).toHaveBeenCalledWith('locations', { recursive: true });
+    expect(writeFile).toHaveBeenCalled();
+  });
+
+  it('staged gelöschte Dateien beim Commit mit git.remove', async () => {
+    await repo.commit({
+      message: 'Standort gelöscht',
+      authorName: 'Autor',
+      authorEmail: 'a@example.com',
+      deletedFiles: ['locations/raum-101.location']
+    });
+
+    expect(git.remove).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fs: expect.anything(),
+        dir: '/',
+        filepath: 'locations/raum-101.location'
+      })
+    );
+  });
+
+  it('meldet nur Dateien mit Änderungen gegenüber HEAD', async () => {
+    // @ts-expect-error mocked function
+    git.statusMatrix.mockResolvedValue([
+      ['assets/clean.asset', 1, 1, 1],
+      ['assets/edited.asset', 1, 2, 1],
+      ['assets/staged.asset', 1, 1, 2],
+      ['assets/new.asset', 0, 2, 0]
+    ]);
+
+    await expect(repo.status()).resolves.toEqual([
+      { file: 'assets/edited.asset', before: 1, after: 2 },
+      { file: 'assets/staged.asset', before: 1, after: 2 },
+      { file: 'assets/new.asset', before: null, after: 2 }
+    ]);
   });
 });

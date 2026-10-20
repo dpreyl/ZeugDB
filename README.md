@@ -8,8 +8,26 @@ Offline-fähige Inventar-Verwaltung als Progressive Web App (PWA).
 - **adapter-static** — die App wird als statische Site exportiert (keine SSR)
 - **sql.js** — SQLite im Browser (IndexedDB als Persistenz)
 - **isomorphic-git** — Git-Sync direkt im Browser
-- **Service Worker** — Offline-Caching der App-Assets
+- **Leaflet** — Kartenkomponente für Punkte, Flächen und Routen
+- **Service Worker** — Offline-Caching der App-Assets und angezeigter OSM-Kacheln
 - **localStorage** — Persistenz von Asset-Daten zwischen Sessions
+
+## Standorte und Karte
+
+Standorte können als **Punkt**, **Raum** (mindestens drei Eckpunkte) oder
+**Leitung** (mindestens zwei Wegpunkte) erfasst werden. Die Koordinaten lassen
+sich manuell eingeben oder über die Standortfreigabe des Browsers übernehmen.
+Die Karte zeigt gespeicherte Punkte, Flächen und Leitungsverläufe an.
+
+Für die Kartenhintergründe werden Kacheln von OpenStreetMap geladen. Bereits
+angezeigte Kacheln werden entsprechend den HTTP-Cache-Angaben des Kartendienstes
+lokal gespeichert (mindestens sieben Tage, wenn keine Angaben vorliegen; maximal
+1.200 Kacheln), damit sie bei späteren Offline-Aufrufen verfügbar sein können.
+Es werden keine Kartenausschnitte vorab heruntergeladen; der Browser kann den
+lokalen Cache jederzeit zugunsten von Speicherplatz leeren. Beim ersten Aufruf eines
+Kartenausschnitts ist daher eine Internetverbindung erforderlich. Die
+Standortdaten selbst bleiben in der App gespeichert. Die GPS-Funktion benötigt
+die Standortfreigabe und einen sicheren Browser-Kontext (HTTPS oder localhost).
 
 ## Entwicklung
 
@@ -53,28 +71,54 @@ serviert ausschließlich statische Dateien — kein Node.js, kein Backend.
 
 1. Browser auf `http://<server-ip>:8080` öffnen
 2. App wird automatisch gecached (Service Worker)
-3. Danach ist die App auch ohne Server-Verbindung nutzbar, solange der
+3. Online angezeigte OpenStreetMap-Kacheln werden ebenfalls gespeichert;
+   offline verfügbar sind nur Kacheln, die zuvor geladen wurden
+4. Danach ist die App auch ohne Server-Verbindung nutzbar, solange der
    Browser die IndexedDB-Daten behält
-4. Für Updates: einmalig mit dem Server verbinden, dann wird die neue
+5. Für Updates: einmalig mit dem Server verbinden, dann wird die neue
    Version geladen
 
-### Statische Dateien manuell verteilen
+### Karte
+
+`src/lib/map/Karte.svelte` nimmt `locations`, `selectedId` und optional
+`onLocationSelect` als Props entgegen. Punkt-Locations verwenden `lat`/`lon`,
+Flächen und Routen verwenden Arrays aus `{ lat, lon }`-Punkten in `polygon`
+bzw. `route`. Die Daten werden als `.location`-Dateien im Git-Repository
+gespeichert. Einzelne Asset-Standorte werden dort als Punkt angelegt und dem
+Asset über das Standortfeld zugewiesen. OpenStreetMap-Kacheln benötigen eine
+Verbindung beim ersten Aufruf. Der Service Worker speichert nur tatsächlich
+angeforderte Kacheln, beachtet deren HTTP-Cache-Fristen und begrenzt den Cache
+auf 1.200 Einträge. Nicht zuvor geladene Kartenausschnitte stehen offline nicht
+als Hintergrundkarte zur Verfügung.
+
+### Statische Dateien verteilen (z. B. GitHub Pages)
 
 ```bash
-# Build generieren
+# Für GitHub Pages unter https://<konto>.github.io/<repository>:
+docker compose run --rm -e BASE_PATH=/repository app npm run build:pages
+
+# Für eine Domain-Root oder einen Host ohne Unterpfad:
+docker compose run --rm app npm run build:pages
+```
+
+Der Ordner `build/` enthält die fertige statische App und kann direkt als
+Deployment-Artefakt hochgeladen werden. Bei GitHub Pages muss `BASE_PATH` exakt
+dem Repository-Pfad mit führendem `/` entsprechen (z. B. `/zeugdb`); bei einer
+User-/Organization-Site oder eigener Domain am Pfad-Root wird die Variable
+weggelassen. `build:pages` erzeugt zusätzlich `404.html` für dynamische
+Client-Routen und `.nojekyll`, damit GitHub Pages die `_app`-Dateien nicht
+ausfiltert.
+
+Für einen eigenen HTTP-Server genügt der normale Build:
+
+```bash
 docker compose run --rm app npm run build
 ```
 
-Der Ordner `build/` enthält die komplette statische App (index.html, JS,
-CSS, Service Worker). Einen beliebigen HTTP-Server davor schalten:
-
-```bash
-# nginx, caddy, oder ein einfacher HTTP-Server
-cd build && npx serve . -l 8080
-```
-
-**Wichtig:** Die App braucht einen HTTP-Server (nicht `file://`), da ES-Module
-und Service Worker nur über HTTP funktionieren.
+Die Ausgabe liegt ebenfalls in `build/`. Sie muss über HTTP/HTTPS bereitgestellt
+werden (nicht per `file://`), da ES-Module und Service Worker sonst blockiert
+werden. Die Umgebungsvariable `BASE_PATH` kann auch für den normalen Build
+gesetzt werden, wenn die App auf einem Unterpfad gehostet wird.
 
 ## Projektstruktur
 
@@ -86,6 +130,7 @@ und Service Worker nur über HTTP funktionieren.
 ├── src/
 │   ├── lib/
 │   │   ├── parser/       # .asset / .type / .comp Parser
+│   │   ├── map/          # Leaflet-Kartenkomponente und Tests
 │   │   ├── db/           # sql.js Schema + Abfragen
 │   │   ├── stores/       # Svelte 5 reaktive Stores
 │   │   ├── services/     # Service-Schicht (DB + Store Brücke)
@@ -93,7 +138,7 @@ und Service Worker nur über HTTP funktionieren.
 │   │   └── fs/           # Dateisystem-Abstraktion
 │   ├── routes/           # SvelteKit-Seiten
 │   └── app.html          # PWA-Manifest + Service Worker
-└── static/               # PWA-Assets (manifest.json, sw.js, Icons)
+└── static/               # PWA-Assets (manifest.json, sw.js, tile-cache.js, Icons)
 ```
 
 ## Tests

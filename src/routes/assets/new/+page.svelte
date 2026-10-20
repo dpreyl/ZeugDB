@@ -1,6 +1,8 @@
 <script lang="ts">
   import { getAssetStore } from '$lib/stores/assets.store.svelte';
+  import { getLocationsStore } from '$lib/stores/locations.store.svelte';
   import { persistStore } from '$lib/services/init';
+  import { base } from '$app/paths';
   import { goto } from '$app/navigation';
 
   let hersteller = $state('');
@@ -12,6 +14,7 @@
   let type = $state('projektor');
   let location = $state('');
 
+  const locations = getLocationsStore();
   const typOptionen = ['projektor', 'hdmi-kabel', 'patchpanel', 'netzteil'];
   const zustandOptionen = ['neu', 'einwandfrei', 'defekt', 'in_reparatur', 'verschrottet'];
 
@@ -31,13 +34,13 @@
       fields
     });
     persistStore();
-    goto(`/assets/${id}`);
+    goto(`${base}/assets/${id}`);
   }
 </script>
 
 <form onsubmit={(e) => { e.preventDefault(); handleSave(); }} class="max-w-2xl space-y-6">
   <div class="flex items-center gap-3">
-    <a href="/" class="text-sm text-gray-500 hover:text-gray-700">← Zurück</a>
+    <a href="{base}/" class="text-sm text-gray-500 hover:text-gray-700">← Zurück</a>
     <h2 class="text-xl font-semibold text-gray-900">Neues Asset</h2>
   </div>
 
@@ -84,7 +87,13 @@
       </div>
       <div>
         <label for="location" class="block text-sm font-medium text-gray-700 mb-1">Standort</label>
-        <input id="location" type="text" bind:value={location} placeholder="z.B. Raum 101" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+        <select id="location" bind:value={location} class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+          <option value="">Kein Standort</option>
+          {#each locations.all as item}
+            <option value={item.id}>{item.name ?? item.id}</option>
+          {/each}
+        </select>
+        <a href="{base}/locations" class="mt-1 inline-block text-xs text-blue-600 hover:underline">Standort mit GPS-Koordinaten anlegen oder auf der Karte anzeigen</a>
       </div>
     </div>
 
@@ -97,7 +106,7 @@
       <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">
         Erzeugen
       </button>
-      <button type="button" onclick={() => goto('/')} class="px-4 py-2 text-gray-600 text-sm rounded-md border border-gray-300 hover:bg-gray-50">
+      <button type="button" onclick={() => goto(`${base}/`)} class="px-4 py-2 text-gray-600 text-sm rounded-md border border-gray-300 hover:bg-gray-50">
         Abbrechen
       </button>
     </div>

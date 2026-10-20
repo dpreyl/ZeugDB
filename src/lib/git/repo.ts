@@ -47,6 +47,10 @@ export class GitRepo implements RepoFs {
   // --- RepoFs (Dateisystem) ---
 
   async writeFile(path: string, content: string): Promise<void> {
+    const separator = path.lastIndexOf('/');
+    if (separator > 0) {
+      await this.fs.mkdir(path.slice(0, separator), { recursive: true });
+    }
     await this.fs.writeFile(path, new TextEncoder().encode(content));
   }
 
@@ -169,11 +173,17 @@ export class GitRepo implements RepoFs {
     authorName: string;
     authorEmail: string;
     files?: string[];
+    deletedFiles?: string[];
   }): Promise<string> {
     // Optional: nur bestimmte Dateien adden
     if (opts.files && opts.files.length > 0) {
       for (const file of opts.files) {
         await git.add({ fs: this.fs, dir: '/', filepath: file });
+      }
+    }
+    if (opts.deletedFiles) {
+      for (const file of opts.deletedFiles) {
+        await git.remove({ fs: this.fs, dir: '/', filepath: file });
       }
     }
     return git.commit({
@@ -199,18 +209,20 @@ export class GitRepo implements RepoFs {
   }
 
   /**
-   * Gibt die aktuellen Statusänderungen zurück.
-   * Nutzt git.listFiles als Approximation (isomorphic-git hat kein
-   * directory-status; git.status benötigt einen konkreten filepath).
+   * Gibt Dateien zurück, deren Arbeitsbaum oder Index vom HEAD abweicht.
    */
   async status(): Promise<StatusEntry[]> {
     try {
-      const files = await git.listFiles({ fs: this.fs, dir: '/' });
-      return files.map(file => ({
-        file,
-        before: null,
-        after: null
-      }));
+      const matrix = await git.statusMatrix({ fs: this.fs, dir: '/' });
+      return matrix.flatMap(([file, head, workdir, stage]) => {
+        if (head === workdir && workdir === stage) return [];
+        const after = head !== stage ? stage : workdir;
+        return [{
+          file,
+          before: head === 0 ? null : head,
+          after: after === 0 ? null : after
+        }];
+      });
     } catch {
       return [];
     }
@@ -253,12 +265,14 @@ export class GitRepo implements RepoFs {
    * Gibt den aktuellen Branch-Namen zurück.
    */
   async getCurrentBranch(): Promise<string | undefined> {
-    return git.currentBranch({ fs: this.fs, dir: '/' });
+    const result = await git.currentBranch({ fs: this.fs, dir: '/' });
+    return result ?? undefined;
   }
 
   /**
    * Führt einen Merge durch.
-   * Bei squash=true wird ein Squash-Merge als Commit durchgeführt.
+   * Bei squash=true wird ein Squash-Merge durchgeführt (Merge ohne Update,
+   * dann manueller Commit).
    */
   async mergeBranch(opts: {
     branch: string;
@@ -267,20 +281,41 @@ export class GitRepo implements RepoFs {
     squash?: boolean;
     message?: string;
   }): Promise<void> {
-    await git.merge({
-      fs: this.fs,
-      dir: '/',
-      theirs: opts.branch,
-      author: {
-        name: opts.authorName,
-        email: opts.authorEmail
-      },
-      fastForward: 'ff',
-      squash: opts.squash ?? false,
-      commitOptions: opts.squash ? {
-        message: opts.message ?? `Squash merge ${opts.branch}`
-      } : undefined
-    });
+    if (opts.squash) {
+      // Squash-Merge: Änderungen mergen, aber keinen Merge-Commit erstellen
+      await git.merge({
+        fs: this.fs,
+        dir: '/',
+        theirs: opts.branch,
+        fastForward: false,
+        noUpdateBranch: true,
+        author: {
+          name: opts.authorName,
+          email: opts.authorEmail
+        }
+      });
+      // Manuelles Commit der geänderten Dateien
+      await git.commit({
+        fs: this.fs,
+        dir: '/',
+        message: opts.message ?? `Squash merge ${opts.branch}`,
+        author: {
+          name: opts.authorName,
+          email: opts.authorEmail
+        }
+      });
+    } else {
+      await git.merge({
+        fs: this.fs,
+        dir: '/',
+        theirs: opts.branch,
+        author: {
+          name: opts.authorName,
+          email: opts.authorEmail
+        },
+        fastForward: true
+      });
+    }
   }
 
   /**
@@ -308,8 +343,7 @@ export class GitRepo implements RepoFs {
     await git.deleteBranch({
       fs: this.fs,
       dir: '/',
-      ref,
-      force: true
+      ref
     });
   }
 }

@@ -5,6 +5,7 @@ import {
   pushToRemote,
   pullFromRemote,
   commitChanges,
+  commitAllToGit,
   isRepoInitialized,
   getSyncStatus,
   resetGitRepo,
@@ -12,6 +13,14 @@ import {
   type GitConfig
 } from './git.service';
 import * as repoModule from '$lib/git/repo';
+import * as assetStoreModule from '$lib/stores/assets.store.svelte';
+import * as locationStoreModule from '$lib/stores/locations.store.svelte';
+
+function mockGitRepo(implementation: Partial<repoModule.GitRepo>): void {
+  vi.spyOn(repoModule, 'GitRepo').mockImplementation(function () {
+    return implementation as repoModule.GitRepo;
+  });
+}
 
 describe('git.service — Konfiguration', () => {
   beforeEach(() => {
@@ -68,9 +77,9 @@ describe('git.service — Push', () => {
   it('übergibt Auth-Daten an repo.push', async () => {
     const progressCallback = vi.fn();
     const mockPush = vi.fn().mockResolvedValue([]);
-    vi.spyOn(repoModule, 'GitRepo').mockImplementation(() => ({
+    mockGitRepo({
       push: mockPush
-    }) as unknown as repoModule.GitRepo);
+    });
 
     const config: GitConfig = {
       url: 'http://example.com/repo.git',
@@ -88,9 +97,9 @@ describe('git.service — Push', () => {
 
   it('akzeptiert optionalen Branch-Parameter', async () => {
     const mockPush = vi.fn().mockResolvedValue([]);
-    vi.spyOn(repoModule, 'GitRepo').mockImplementation(() => ({
+    mockGitRepo({
       push: mockPush
-    }) as unknown as repoModule.GitRepo);
+    });
 
     const config: GitConfig = {
       url: 'http://example.com/repo.git',
@@ -120,9 +129,9 @@ describe('git.service — Pull', () => {
 
   it('übergibt Auth- und Author-Daten an repo.pull', async () => {
     const mockPull = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(repoModule, 'GitRepo').mockImplementation(() => ({
+    mockGitRepo({
       pull: mockPull
-    }) as unknown as repoModule.GitRepo);
+    });
 
     // Mock syncAssetsToDb und persistStore
     const syncModule = await import('$lib/fs/repo-sync');
@@ -168,9 +177,9 @@ describe('git.service — Commit', () => {
 
   it('übergibt Message und Author an repo.commit', async () => {
     const mockCommit = vi.fn().mockResolvedValue('abc123');
-    vi.spyOn(repoModule, 'GitRepo').mockImplementation(() => ({
+    mockGitRepo({
       commit: mockCommit
-    }) as unknown as repoModule.GitRepo);
+    });
 
     await commitChanges('Test commit', 'Author', 'author@example.com', ['file.txt']);
 
@@ -184,12 +193,95 @@ describe('git.service — Commit', () => {
 
   it('gibt Commit-SHA zurück', async () => {
     const mockCommit = vi.fn().mockResolvedValue('deadbeef');
-    vi.spyOn(repoModule, 'GitRepo').mockImplementation(() => ({
+    mockGitRepo({
       commit: mockCommit
-    }) as unknown as repoModule.GitRepo);
+    });
 
     const sha = await commitChanges('Test', 'Author', 'a@b.com');
     expect(sha).toBe('deadbeef');
+  });
+
+  it('schreibt geänderte Standorte ins Git und committet nur diese Dateien', async () => {
+    const writeFile = vi.fn().mockResolvedValue(undefined);
+    const commit = vi.fn().mockResolvedValue('location-sha');
+    mockGitRepo({
+      readFile: vi.fn().mockRejectedValue(new Error('Datei fehlt')),
+      writeFile,
+      commit
+    });
+    vi.spyOn(assetStoreModule, 'getAssetStore').mockReturnValue({
+      all: [],
+      findFull: vi.fn()
+    } as unknown as ReturnType<typeof assetStoreModule.getAssetStore>);
+    vi.spyOn(locationStoreModule, 'getLocationsStore').mockReturnValue({
+      all: [{ id: 'raum-101', name: 'Raum 101', art: 'raum', polygon: [
+        { lat: 48.1, lon: 11.5 },
+        { lat: 48.2, lon: 11.5 },
+        { lat: 48.2, lon: 11.6 }
+      ] }]
+    } as unknown as ReturnType<typeof locationStoreModule.getLocationsStore>);
+
+    await expect(commitAllToGit('Standort geändert', 'Autor', 'a@example.com'))
+      .resolves.toBe('location-sha');
+
+    expect(writeFile).toHaveBeenCalledWith(
+      'locations/raum-101.location',
+      expect.stringContaining('[polygon]')
+    );
+    expect(commit).toHaveBeenCalledWith({
+      message: 'Standort geändert',
+      authorName: 'Autor',
+      authorEmail: 'a@example.com',
+      files: ['locations/raum-101.location'],
+      deletedFiles: []
+    });
+  });
+
+  it('legt keinen leeren Commit an, wenn sich Standorte nicht geändert haben', async () => {
+    const content = 'id: standort\nname: Lager';
+    const commit = vi.fn();
+    mockGitRepo({
+      readFile: vi.fn().mockResolvedValue(content),
+      writeFile: vi.fn(),
+      commit
+    });
+    vi.spyOn(assetStoreModule, 'getAssetStore').mockReturnValue({
+      all: [],
+      findFull: vi.fn()
+    } as unknown as ReturnType<typeof assetStoreModule.getAssetStore>);
+    vi.spyOn(locationStoreModule, 'getLocationsStore').mockReturnValue({
+      all: [{ id: 'standort', name: 'Lager' }]
+    } as unknown as ReturnType<typeof locationStoreModule.getLocationsStore>);
+
+    await expect(commitAllToGit('Keine Änderung', 'Autor', 'a@example.com')).resolves.toBeNull();
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it('committet entfernte Standortdateien als Git-Löschung', async () => {
+    const commit = vi.fn().mockResolvedValue('delete-sha');
+    mockGitRepo({
+      readFile: vi.fn().mockRejectedValue(new Error('Datei fehlt')),
+      readdir: vi.fn().mockResolvedValue(['raum-101.location']),
+      commit
+    });
+    vi.spyOn(assetStoreModule, 'getAssetStore').mockReturnValue({
+      all: [],
+      findFull: vi.fn()
+    } as unknown as ReturnType<typeof assetStoreModule.getAssetStore>);
+    vi.spyOn(locationStoreModule, 'getLocationsStore').mockReturnValue({
+      all: []
+    } as unknown as ReturnType<typeof locationStoreModule.getLocationsStore>);
+
+    await expect(commitAllToGit('Standort gelöscht', 'Autor', 'a@example.com'))
+      .resolves.toBe('delete-sha');
+
+    expect(commit).toHaveBeenCalledWith({
+      message: 'Standort gelöscht',
+      authorName: 'Autor',
+      authorEmail: 'a@example.com',
+      files: [],
+      deletedFiles: ['locations/raum-101.location']
+    });
   });
 });
 
@@ -230,11 +322,11 @@ describe('git.service — fetchRemote', () => {
     const mockFetch = vi.fn().mockResolvedValue(undefined);
     const mockPull = vi.fn().mockResolvedValue(undefined);
     const mockReaddir = vi.fn().mockResolvedValue([]);
-    vi.spyOn(repoModule, 'GitRepo').mockImplementation(() => ({
+    mockGitRepo({
       fetchFromRemote: mockFetch,
       pull: mockPull,
       readdir: mockReaddir
-    }) as unknown as repoModule.GitRepo);
+    });
 
     const config: GitConfig = {
       url: 'http://example.com/repo.git',
@@ -251,11 +343,11 @@ describe('git.service — fetchRemote', () => {
     const mockFetch = vi.fn().mockResolvedValue(undefined);
     const mockMerge = vi.fn().mockResolvedValue(undefined);
     const mockReaddir = vi.fn().mockResolvedValue([]);
-    vi.spyOn(repoModule, 'GitRepo').mockImplementation(() => ({
+    mockGitRepo({
       fetchFromRemote: mockFetch,
       mergeBranch: mockMerge,
       readdir: mockReaddir
-    }) as unknown as repoModule.GitRepo);
+    });
 
     // Edit-Mode aktivieren
     const editModule = await import('$lib/stores/edit-mode.svelte');
@@ -285,11 +377,11 @@ describe('git.service — fetchRemote', () => {
     const mockFetch = vi.fn().mockResolvedValue(undefined);
     const mockPull = vi.fn().mockResolvedValue(undefined);
     const mockReaddir = vi.fn().mockResolvedValue([]);
-    vi.spyOn(repoModule, 'GitRepo').mockImplementation(() => ({
+    mockGitRepo({
       fetchFromRemote: mockFetch,
       pull: mockPull,
       readdir: mockReaddir
-    }) as unknown as repoModule.GitRepo);
+    });
 
     const syncMetaModule = await import('$lib/stores/sync-meta.svelte');
     const syncMeta = syncMetaModule.getSyncMeta();
@@ -318,11 +410,11 @@ describe('git.service — Status', () => {
   });
 
   it('gibt initialisierten Status zurück', async () => {
-    vi.spyOn(repoModule, 'GitRepo').mockImplementation(() => ({
+    mockGitRepo({
       isInitialized: () => Promise.resolve(true),
       getRemoteUrl: () => Promise.resolve('http://example.com/repo.git'),
-      status: () => Promise.resolve([{ file: 'test.txt', before: null, after: 'abc' }])
-    }) as unknown as repoModule.GitRepo);
+      status: () => Promise.resolve([{ file: 'test.txt', before: null, after: 2 }])
+    });
 
     const status = await getSyncStatus();
     expect(status.initialized).toBe(true);
@@ -331,9 +423,9 @@ describe('git.service — Status', () => {
   });
 
   it('gibt nicht-initialisierten Status zurück', async () => {
-    vi.spyOn(repoModule, 'GitRepo').mockImplementation(() => ({
+    mockGitRepo({
       isInitialized: () => Promise.resolve(false)
-    }) as unknown as repoModule.GitRepo);
+    });
 
     const status = await getSyncStatus();
     expect(status.initialized).toBe(false);
