@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getEditMode, resetEditMode } from '$lib/stores/edit-mode.svelte';
 
@@ -8,12 +8,17 @@ const mocks = vi.hoisted(() => {
     bindPopup: vi.fn().mockReturnThis(),
     on: vi.fn().mockReturnThis()
   };
+  const map = {
+    setView: vi.fn(),
+    fitBounds: vi.fn(),
+    on: vi.fn().mockReturnThis(),
+    getCenter: vi.fn(() => ({ lat: 0, lng: 0 })),
+    getZoom: vi.fn(() => 2),
+    remove: vi.fn()
+  };
+  map.setView.mockReturnValue(map);
   const leaflet = {
-    map: vi.fn(() => ({
-      setView: vi.fn().mockReturnThis(),
-      fitBounds: vi.fn(),
-      remove: vi.fn()
-    })),
+    map: vi.fn(() => map),
     tileLayer: vi.fn(() => overlay),
     layerGroup: vi.fn(() => ({ addTo: vi.fn().mockReturnThis(), clearLayers: vi.fn() })),
     polygon: vi.fn(() => overlay),
@@ -38,14 +43,22 @@ const mocks = vi.hoisted(() => {
         id: 'projektor',
         name: 'Projektor',
         kategorie: 'Video',
-        fields: [{ nr: 1, name: 'seriennummer', art: 'text', optionen: null, pflicht: true, sensitiv: false }],
+        fields: [
+          { nr: 0, name: 'hersteller', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+          { nr: 1, name: 'modell', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+          { nr: 2, name: 'seriennummer', art: 'text', optionen: null, pflicht: true, sensitiv: false },
+          { nr: 3, name: 'inventarnummer', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+          { nr: 4, name: 'zustand', art: 'dropdown', optionen: 'neu|einwandfrei|defekt', pflicht: false, sensitiv: false }
+        ],
         blocks: [{ compId: 'lampen', min: 0, max: 2 }]
       }],
       add: vi.fn(),
       remove: vi.fn()
     },
     persistStore: vi.fn(),
-    leaflet
+    goto: vi.fn(),
+    leaflet,
+    map
   };
 });
 
@@ -59,6 +72,7 @@ vi.mock('$lib/stores/types.store.svelte', () => ({
   getTypesStore: () => mocks.types
 }));
 vi.mock('$lib/services/init', () => ({ persistStore: mocks.persistStore }));
+vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 vi.mock('leaflet', () => ({ default: mocks.leaflet }));
 vi.mock('leaflet/dist/leaflet.css', () => ({}));
 
@@ -73,6 +87,7 @@ function enterEditMode() {
 
 beforeEach(() => {
   resetEditMode();
+  sessionStorage.removeItem('zeugdb:edit-session');
   vi.clearAllMocks();
   mocks.locations.all = [{ id: 'raum-1', name: 'Raum 1', art: 'punkt', lat: 52, lon: 13 }];
   mocks.assets.all = [];
@@ -80,7 +95,13 @@ beforeEach(() => {
     id: 'projektor',
     name: 'Projektor',
     kategorie: 'Video',
-    fields: [{ nr: 1, name: 'seriennummer', art: 'text', optionen: null, pflicht: true, sensitiv: false }],
+    fields: [
+      { nr: 0, name: 'hersteller', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+      { nr: 1, name: 'modell', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+      { nr: 2, name: 'seriennummer', art: 'text', optionen: null, pflicht: true, sensitiv: false },
+      { nr: 3, name: 'inventarnummer', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+      { nr: 4, name: 'zustand', art: 'dropdown', optionen: 'neu|einwandfrei|defekt', pflicht: false, sensitiv: false }
+    ],
     blocks: [{ compId: 'lampen', min: 0, max: 2 }]
   }];
 });
@@ -157,10 +178,73 @@ describe('Schreibmodus in der Oberfläche', () => {
   it('verhindert das Erzeugen neuer Assets im Read-Only-Modus', async () => {
     render(NewAssetPage);
 
-    expect(screen.getByLabelText('Hersteller').matches(':disabled')).toBe(true);
+    expect(screen.getByLabelText(/hersteller/i).matches(':disabled')).toBe(true);
     expect(screen.queryByRole('button', { name: 'Erzeugen' })).toBeNull();
     await fireEvent.submit(screen.getByRole('heading', { name: 'Neues Asset' }).closest('form')!);
     expect(mocks.assets.createAsset).not.toHaveBeenCalled();
+  });
+
+  it('zeigt und speichert benutzerdefinierte Felder aus dem gewählten Asset-Typ', async () => {
+    enterEditMode();
+    mocks.types.all = [{
+      id: 'projektor',
+      name: 'Projektor',
+      kategorie: 'Video',
+      fields: [
+        { nr: 0, name: 'Lichtstärke', art: 'number', optionen: null, pflicht: true, sensitiv: false },
+        { nr: 1, name: 'Auflösung', art: 'dropdown', optionen: '1080p|4K', pflicht: false, sensitiv: false }
+      ],
+      blocks: [{ compId: 'lampen', min: 0, max: 2 }]
+    }];
+    render(NewAssetPage);
+
+    expect(screen.getByLabelText(/Lichtstärke/)).toBeTruthy();
+    await fireEvent.input(screen.getByLabelText(/Lichtstärke/), { target: { value: '5000' } });
+    await fireEvent.change(screen.getByLabelText('Auflösung'), { target: { value: '4K' } });
+    await fireEvent.submit(screen.getByRole('heading', { name: 'Neues Asset' }).closest('form')!);
+
+    expect(mocks.assets.createAsset).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'projektor',
+      fields: { 'Lichtstärke': '5000', 'Auflösung': '4K' }
+    }));
+  });
+
+  it('zeigt definierte Typfelder in der Asset-Ansicht und speichert Änderungen', async () => {
+    enterEditMode();
+    mocks.types.all = [{
+      id: 'projektor',
+      name: 'Projektor',
+      kategorie: 'Video',
+      fields: [{ nr: 0, name: 'Lichtstärke', art: 'number', optionen: null, pflicht: true, sensitiv: false }],
+      blocks: [{ compId: 'lampen', min: 0, max: 2 }]
+    }];
+    render(AssetPage, {
+      props: {
+        data: {
+          id: 'asset-1',
+          type: 'projektor',
+          hersteller: '',
+          modell: '',
+          seriennummer: '',
+          inventarnummer: '',
+          zustand: '',
+          notizen: '',
+          'Lichtstärke': '5000',
+          location: null,
+          erstellt: null,
+          geaendert: null
+        }
+      }
+    });
+
+    const input = screen.getByLabelText(/Lichtstärke/) as HTMLInputElement;
+    await waitFor(() => expect(input.value).toBe('5000'));
+    await fireEvent.input(input, { target: { value: '5500' } });
+    await fireEvent.submit(screen.getByRole('heading', { name: 'Asset asset-1' }).closest('form')!);
+
+    expect(mocks.assets.updateAsset).toHaveBeenCalledWith('asset-1', expect.objectContaining({
+      fields: expect.objectContaining({ 'Lichtstärke': '5500' })
+    }));
   });
 
   it('zeigt Typ-Verwaltungsaktionen erst im Schreibmodus und Typdetails auf Anfrage', () => {

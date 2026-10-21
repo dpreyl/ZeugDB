@@ -1,36 +1,40 @@
 <script lang="ts">
   import { getAssetStore } from '$lib/stores/assets.store.svelte';
   import { getLocationsStore } from '$lib/stores/locations.store.svelte';
+  import { getTypesStore } from '$lib/stores/types.store.svelte';
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
+  import AssetTypeFields from '$lib/components/AssetTypeFields.svelte';
+  import { resolveAssetTypeFields } from '$lib/components/asset-type-fields';
   import { persistStore } from '$lib/services/init';
   import { base } from '$app/paths';
   import { goto } from '$app/navigation';
 
-  let hersteller = $state('');
-  let modell = $state('');
-  let seriennummer = $state('');
-  let inventarnummer = $state('');
-  let zustand = $state('einwandfrei');
-  let notizen = $state('');
-  let type = $state('projektor');
+  let type = $state('');
+  let fieldValues = $state<Record<string, string>>({});
   let location = $state('');
 
   const locations = getLocationsStore();
+  const types = getTypesStore();
   const editMode = getEditMode();
-  const typOptionen = ['projektor', 'hdmi-kabel', 'patchpanel', 'netzteil'];
-  const zustandOptionen = ['neu', 'einwandfrei', 'defekt', 'in_reparatur', 'verschrottet'];
+  const typeFields = $derived(resolveAssetTypeFields(type, types.all));
+
+  $effect(() => {
+    if (!types.all.some(item => item.id === type) && types.all.length > 0) {
+      type = types.all[0].id;
+    }
+  });
+
+  function updateField(name: string, value: string) {
+    fieldValues[name] = value;
+  }
 
   function handleSave(event: SubmitEvent) {
     event.preventDefault();
-    if (!editMode.isEditing) return;
+    if (!editMode.isEditing || !type) return;
     const store = getAssetStore();
-    const fields: Record<string, string> = {};
-    if (hersteller) fields.hersteller = hersteller;
-    if (modell) fields.modell = modell;
-    if (seriennummer) fields.seriennummer = seriennummer;
-    if (inventarnummer) fields.inventarnummer = inventarnummer;
-    if (zustand) fields.zustand = zustand;
-    if (notizen) fields.notizen = notizen;
+    const fields = Object.fromEntries(
+      typeFields.map(field => [field.name, fieldValues[field.name] ?? ''])
+    );
 
     const id = store.createAsset({
       type,
@@ -55,59 +59,24 @@
     <fieldset disabled={!editMode.isEditing} class="m-0 min-w-0 space-y-4 border-0 p-0">
     <div>
       <label for="type" class="block text-sm font-medium text-gray-700 mb-1">Typ</label>
-      <select id="type" bind:value={type} class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-        {#each typOptionen as opt}
-          <option value={opt}>{opt}</option>
+      <select id="type" bind:value={type} required class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        {#each types.all as item (item.id)}
+          <option value={item.id}>{item.name ?? item.id}</option>
         {/each}
       </select>
     </div>
 
-    <div class="grid grid-cols-2 gap-4">
-      <div>
-        <label for="hersteller" class="block text-sm font-medium text-gray-700 mb-1">Hersteller</label>
-        <input id="hersteller" type="text" bind:value={hersteller} class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-      </div>
-      <div>
-        <label for="modell" class="block text-sm font-medium text-gray-700 mb-1">Modell</label>
-        <input id="modell" type="text" bind:value={modell} class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-      </div>
-    </div>
-
-    <div class="grid grid-cols-2 gap-4">
-      <div>
-        <label for="seriennummer" class="block text-sm font-medium text-gray-700 mb-1">Seriennummer</label>
-        <input id="seriennummer" type="text" bind:value={seriennummer} class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-      </div>
-      <div>
-        <label for="inventarnummer" class="block text-sm font-medium text-gray-700 mb-1">Inventarnummer</label>
-        <input id="inventarnummer" type="text" bind:value={inventarnummer} class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-      </div>
-    </div>
-
-    <div class="grid grid-cols-2 gap-4">
-      <div>
-        <label for="zustand" class="block text-sm font-medium text-gray-700 mb-1">Zustand</label>
-        <select id="zustand" bind:value={zustand} class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-          {#each zustandOptionen as opt}
-            <option value={opt}>{opt}</option>
-          {/each}
-        </select>
-      </div>
-      <div>
-        <label for="location" class="block text-sm font-medium text-gray-700 mb-1">Standort</label>
-        <select id="location" bind:value={location} class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-          <option value="">Kein Standort</option>
-          {#each locations.all as item}
-            <option value={item.id}>{item.name ?? item.id}</option>
-          {/each}
-        </select>
-        <a href="{base}/locations" class="mt-1 inline-block text-xs text-blue-600 hover:underline">Standort mit GPS-Koordinaten anlegen oder auf der Karte anzeigen</a>
-      </div>
-    </div>
+    <AssetTypeFields fields={typeFields} values={fieldValues} editable={true} onValueChange={updateField} />
 
     <div>
-      <label for="notizen" class="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
-      <textarea id="notizen" bind:value={notizen} rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+      <label for="location" class="block text-sm font-medium text-gray-700 mb-1">Standort</label>
+      <select id="location" bind:value={location} class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        <option value="">Kein Standort</option>
+        {#each locations.all as item (item.id)}
+          <option value={item.id}>{item.name ?? item.id}</option>
+        {/each}
+      </select>
+      <a href="{base}/locations" class="mt-1 inline-block text-xs text-blue-600 hover:underline">Standort mit GPS-Koordinaten anlegen oder auf der Karte anzeigen</a>
     </div>
     </fieldset>
 

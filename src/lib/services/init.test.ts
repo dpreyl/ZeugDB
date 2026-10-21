@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   initializeStore,
-  persistStore
+  persistStore,
+  serializeAssetFile
 } from './init';
 import { getAssetStore, resetAssetStore } from '../stores/assets.store.svelte';
 import { getTypesStore, resetTypesStore } from '../stores/types.store.svelte';
@@ -78,6 +79,28 @@ describe('init', () => {
     expect(saved.length).toBe(1);
     expect(saved[0].row.type).toBe('test');
     expect(saved[0].fields.hersteller).toBe('TestCo');
+  });
+
+  it('serializes every type-defined asset field to its .asset file', () => {
+    const output = serializeAssetFile({
+      id: 'asset-1',
+      type: 'projektor',
+      location: null,
+      erstellt: '2026-10-21T10:00:00.000Z',
+      geaendert: '2026-10-21T10:00:00.000Z',
+      hersteller: 'Sony',
+      modell: '',
+      seriennummer: '',
+      inventarnummer: '',
+      zustand: '',
+      notizen: '',
+      lichtstaerke: '5000',
+      aufloesung: '4K'
+    });
+
+    expect(output).toContain('lichtstaerke: 5000');
+    expect(output).toContain('aufloesung: 4K');
+    expect(output).not.toContain('location:');
   });
 
   it('persistStore speichert neue Typen', () => {

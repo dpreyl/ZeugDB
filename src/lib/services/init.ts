@@ -136,13 +136,10 @@ export function serializeAssetFile(asset: SerializedAsset): string {
     ...(asset.erstellt && { erstellt: asset.erstellt }),
     ...(asset.geaendert && { geaendert: asset.geaendert })
   };
-  // Zusätzliche Felder
-  if (asset.hersteller) direct.hersteller = asset.hersteller;
-  if (asset.modell) direct.modell = asset.modell;
-  if (asset.seriennummer) direct.seriennummer = asset.seriennummer;
-  if (asset.inventarnummer) direct.inventarnummer = asset.inventarnummer;
-  if (asset.zustand) direct.zustand = asset.zustand;
-  if (asset.notizen) direct.notizen = asset.notizen;
+  const metadata = new Set(['id', 'type', 'location', 'erstellt', 'geaendert']);
+  for (const [key, value] of Object.entries(asset)) {
+    if (!metadata.has(key) && value) direct[key] = value;
+  }
 
   const parsed: ParsedAsset = { direct, blocks: {} };
   return serializeAsset(parsed);

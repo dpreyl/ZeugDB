@@ -51,7 +51,10 @@ und entfernen. Für jedes Feld werden Eingabetyp, Pflichtstatus und
 Kennzeichnung sensibler Daten über Auswahlfelder und Schalter festgelegt.
 Auswahllisten erhalten ihre Werte als einzelne Einträge; eine manuelle Eingabe
 der `.type`-Dateisyntax ist dafür nicht erforderlich. Die Typ-ID wird beim
-Anlegen automatisch aus dem Namen erzeugt.
+Anlegen automatisch aus dem Namen erzeugt. Die Felddefinitionen eines Typs
+bestimmen die Eingabefelder beim Anlegen und Bearbeiten der zugehörigen Assets;
+geerbte Felder werden ebenfalls angezeigt. Werte benutzerdefinierter Felder
+werden in der `.asset`-Datei gespeichert.
 ## Entwicklung
 
 ### Setup
