@@ -1,8 +1,10 @@
 <script lang="ts">
   import { base } from '$app/paths';
+  import { getEditMode } from '$lib/stores/edit-mode.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
+  const editMode = getEditMode();
 </script>
 
 <div class="space-y-4">
@@ -11,9 +13,11 @@
       <h2 class="text-xl font-semibold text-gray-900">Assets</h2>
       <p class="text-sm text-gray-500">{data.assets.length} Einträge</p>
     </div>
-    <a href="{base}/assets/new" class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-block">
-      + Neues Asset
-    </a>
+    {#if editMode.isEditing}
+      <a href="{base}/assets/new" class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-block">
+        + Neues Asset
+      </a>
+    {/if}
   </div>
 
   <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">

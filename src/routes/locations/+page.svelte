@@ -3,12 +3,14 @@
   import Karte from '$lib/map/Karte.svelte';
   import { getLocationsStore } from '$lib/stores/locations.store.svelte';
   import { getAssetStore } from '$lib/stores/assets.store.svelte';
+  import { getEditMode } from '$lib/stores/edit-mode.svelte';
   import type { Location } from '$lib/parser/types';
   import { persistStore } from '$lib/services/init';
   import { flattenLocationTree } from '$lib/locations/location-tree';
 
   const store = getLocationsStore();
   const assets = getAssetStore();
+  const editMode = getEditMode();
   const locationRows = $derived.by(() => flattenLocationTree(store.all));
   const assetLabels = $derived.by(() => {
     const labels: Record<string, string[]> = {};
@@ -23,6 +25,11 @@
   let showForm = $state(false);
   let editingLocation = $state<Location | undefined>();
   let selectedId = $state<string | null>(null);
+  const selectedLocation = $derived(store.all.find((location) => location.id === selectedId));
+
+  $effect(() => {
+    if (!editMode.isEditing && showForm) resetForm();
+  });
 
   function resetForm() {
     showForm = false;
@@ -30,11 +37,19 @@
   }
 
   function startEdit(location: Location) {
+    if (!editMode.isEditing) return;
     editingLocation = location;
     showForm = true;
   }
 
+  function selectLocation(location: Location) {
+    selectedId = location.id ?? null;
+    editingLocation = undefined;
+    showForm = false;
+  }
+
   function saveLocation(location: Location) {
+    if (!editMode.isEditing) return;
     store.add(location);
     persistStore();
     selectedId = location.id ?? null;
@@ -42,6 +57,7 @@
   }
 
   function handleDelete(id: string) {
+    if (!editMode.isEditing) return;
     store.remove(id);
     if (selectedId === id) selectedId = null;
     persistStore();
@@ -54,18 +70,21 @@
       <h2 class="text-xl font-semibold text-gray-900">Standorte</h2>
       <p class="text-sm text-gray-500">Punkte, Raumumrisse und Leitungsverläufe verwalten</p>
     </div>
-    <button
-      onclick={() => { editingLocation = undefined; showForm = true; }}
-      class="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-    >
-      + Neuer Standort
-    </button>
+    {#if editMode.isEditing}
+      <button
+        onclick={() => { selectedId = null; editingLocation = undefined; showForm = true; }}
+        class="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+      >
+        + Neuer Standort
+      </button>
+    {/if}
   </div>
 
-  {#if showForm}
-    {#key editingLocation?.id ?? 'new'}
+  {#if showForm || selectedLocation}
+    {#key editingLocation?.id ?? selectedLocation?.id ?? 'new'}
       <LocationForm
-        location={editingLocation}
+        location={editingLocation ?? selectedLocation}
+        disabled={!editMode.isEditing || !showForm}
         onSave={saveLocation}
         onCancel={resetForm}
       />
@@ -82,7 +101,7 @@
           style={`margin-left: ${Math.min(row.depth, 8) * 1.25}rem`}
         >
           <div class="flex items-center justify-between">
-            <button class="text-left" onclick={() => selectedId = row.location.id ?? null}>
+            <button class="text-left" onclick={() => selectLocation(row.location)}>
               <span class="font-medium text-gray-900">{row.location.name ?? row.location.id}</span>
               <span class="text-xs text-gray-500 ml-2">{row.location.id}</span>
               <span class="ml-2 text-xs text-gray-500">{row.location.art ?? 'punkt'}</span>
@@ -90,10 +109,12 @@
                 <span class="ml-2 text-xs text-yellow-700">(Eltern nicht gefunden)</span>
               {/if}
             </button>
-            <div class="flex gap-2">
-              <button onclick={() => startEdit(row.location)} class="text-xs text-blue-600 hover:underline">Bearbeiten</button>
-              <button onclick={() => row.location.id && handleDelete(row.location.id)} class="text-xs text-red-600 hover:underline">Löschen</button>
-            </div>
+            {#if editMode.isEditing}
+              <div class="flex gap-2">
+                <button onclick={() => startEdit(row.location)} class="text-xs text-blue-600 hover:underline">Bearbeiten</button>
+                <button onclick={() => row.location.id && handleDelete(row.location.id)} class="text-xs text-red-600 hover:underline">Löschen</button>
+              </div>
+            {/if}
           </div>
         </div>
       {/each}

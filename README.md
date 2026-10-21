@@ -16,8 +16,11 @@ Offline-fähige Inventar-Verwaltung als Progressive Web App (PWA).
 
 Standorte können als **Punkt**, **Raum** (mindestens drei Eckpunkte) oder
 **Leitung** (mindestens zwei Wegpunkte) erfasst werden. Die Koordinaten lassen
-sich manuell eingeben oder über die Standortfreigabe des Browsers übernehmen.
-Die Karte zeigt gespeicherte Punkte, Flächen und Leitungsverläufe an.
+sich manuell eingeben, über die Standortfreigabe des Browsers übernehmen oder
+für jeden einzelnen Punkt auf der Karte bestimmen. Dabei wird die Karte unter
+einer festen Nadel verschoben und der Ausschnitt kann zum präzisen Ausrichten
+vergrößert werden; so muss die Nadel bei Touch-Eingabe nicht direkt getroffen
+werden. Die Karte zeigt gespeicherte Punkte, Flächen und Leitungsverläufe an.
 
 Für die Kartenhintergründe werden Kacheln von OpenStreetMap geladen. Bereits
 angezeigte Kacheln werden entsprechend den HTTP-Cache-Angaben des Kartendienstes
@@ -29,6 +32,26 @@ Kartenausschnitts ist daher eine Internetverbindung erforderlich. Die
 Standortdaten selbst bleiben in der App gespeichert. Die GPS-Funktion benötigt
 die Standortfreigabe und einen sicheren Browser-Kontext (HTTPS oder localhost).
 
+## Schreibmodus
+
+Assets, Typen und Standorte können nur im aktivierten Schreibmodus angelegt,
+geändert oder gelöscht werden. Im Read-Only-Modus werden Details als Text
+angezeigt statt als scheinbar editierbare Felder; bei Typen öffnet **Details
+ansehen** die Feld- und Blockdefinitionen, bei Standorten die Identität, Art
+und Koordinaten. Verwaltungsaktionen sind ausgeblendet. Zum Bearbeiten zuerst
+oben in der App **Bearbeiten** aktivieren und anschließend bei Standorten oder
+Typen den jeweiligen Bearbeiten-Schalter verwenden; Änderungen erfolgen im
+Edit-Branch und werden erst mit **Sync** ins Git-Repository übertragen.
+
+## Typen verwalten
+
+Asset-Typen werden auf der Seite **Typen** über ein Formular erstellt und
+bearbeitet. Felder und wiederholbare Bausteine lassen sich einzeln hinzufügen
+und entfernen. Für jedes Feld werden Eingabetyp, Pflichtstatus und
+Kennzeichnung sensibler Daten über Auswahlfelder und Schalter festgelegt.
+Auswahllisten erhalten ihre Werte als einzelne Einträge; eine manuelle Eingabe
+der `.type`-Dateisyntax ist dafür nicht erforderlich. Die Typ-ID wird beim
+Anlegen automatisch aus dem Namen erzeugt.
 ## Entwicklung
 
 ### Setup

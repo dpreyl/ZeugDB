@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getAssetStore } from '$lib/stores/assets.store.svelte';
   import { getLocationsStore } from '$lib/stores/locations.store.svelte';
+  import { getEditMode } from '$lib/stores/edit-mode.svelte';
   import { persistStore } from '$lib/services/init';
   import { base } from '$app/paths';
   import { goto } from '$app/navigation';
@@ -15,10 +16,13 @@
   let location = $state('');
 
   const locations = getLocationsStore();
+  const editMode = getEditMode();
   const typOptionen = ['projektor', 'hdmi-kabel', 'patchpanel', 'netzteil'];
   const zustandOptionen = ['neu', 'einwandfrei', 'defekt', 'in_reparatur', 'verschrottet'];
 
-  function handleSave() {
+  function handleSave(event: SubmitEvent) {
+    event.preventDefault();
+    if (!editMode.isEditing) return;
     const store = getAssetStore();
     const fields: Record<string, string> = {};
     if (hersteller) fields.hersteller = hersteller;
@@ -38,13 +42,17 @@
   }
 </script>
 
-<form onsubmit={(e) => { e.preventDefault(); handleSave(); }} class="max-w-2xl space-y-6">
+<form onsubmit={handleSave} class="max-w-2xl space-y-6">
   <div class="flex items-center gap-3">
     <a href="{base}/" class="text-sm text-gray-500 hover:text-gray-700">← Zurück</a>
     <h2 class="text-xl font-semibold text-gray-900">Neues Asset</h2>
   </div>
 
   <div class="bg-white rounded-lg shadow border border-gray-200 p-6 space-y-4">
+    {#if !editMode.isEditing}
+      <p class="text-sm text-gray-500" role="status">Zum Anlegen eines Assets den Schreibmodus aktivieren.</p>
+    {/if}
+    <fieldset disabled={!editMode.isEditing} class="m-0 min-w-0 space-y-4 border-0 p-0">
     <div>
       <label for="type" class="block text-sm font-medium text-gray-700 mb-1">Typ</label>
       <select id="type" bind:value={type} class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
@@ -101,11 +109,14 @@
       <label for="notizen" class="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
       <textarea id="notizen" bind:value={notizen} rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
     </div>
+    </fieldset>
 
     <div class="flex gap-3 pt-2">
-      <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">
-        Erzeugen
-      </button>
+      {#if editMode.isEditing}
+        <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">
+          Erzeugen
+        </button>
+      {/if}
       <button type="button" onclick={() => goto(`${base}/`)} class="px-4 py-2 text-gray-600 text-sm rounded-md border border-gray-300 hover:bg-gray-50">
         Abbrechen
       </button>

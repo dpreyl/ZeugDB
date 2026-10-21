@@ -1,5 +1,21 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
+
+const mapMocks = vi.hoisted(() => {
+  const map = {
+    setView: vi.fn(),
+    on: vi.fn().mockReturnThis(),
+    remove: vi.fn(),
+    getCenter: vi.fn(() => ({ lat: 50.12345678, lng: 8.98765432 }))
+  };
+  map.setView.mockReturnValue(map);
+  const layer = { addTo: vi.fn().mockReturnThis() };
+  return { map, leaflet: { map: vi.fn(() => map), tileLayer: vi.fn(() => layer) } };
+});
+
+vi.mock('leaflet', () => ({ default: mapMocks.leaflet }));
+vi.mock('leaflet/dist/leaflet.css', () => ({}));
+
 import LocationForm from './LocationForm.svelte';
 
 describe('LocationForm', () => {
@@ -60,5 +76,65 @@ describe('LocationForm', () => {
     expect(screen.getByRole('alert').textContent).toContain(
       'Ein Raum benötigt mindestens 3 Koordinaten.'
     );
+  });
+  it('disables every field and blocks saving in read-only mode', async () => {
+    const onSave = vi.fn();
+    render(LocationForm, {
+      props: {
+        location: {
+          id: 'raum-1',
+          name: 'Werkstatt',
+          art: 'raum',
+          polygon: [{ lat: 52, lon: 13 }, { lat: 52.1, lon: 13 }, { lat: 52.1, lon: 13.1 }]
+        },
+        onSave,
+        onCancel: vi.fn(),
+        disabled: true
+      }
+    });
+
+    expect(screen.getByRole('region', { name: 'Standortdetails' })).toBeTruthy();
+    expect(screen.getByText('Werkstatt')).toBeTruthy();
+    expect(screen.getByText('1. Breitengrad 52, Längengrad 13')).toBeTruthy();
+    expect(screen.queryByLabelText('ID')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Speichern' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Aktuellen Standort verwenden' })).toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('sets the selected room corner from the precise map center', async () => {
+    render(LocationForm, { props: { onSave: vi.fn(), onCancel: vi.fn() } });
+    await fireEvent.change(screen.getByLabelText('Koordinatenart'), {
+      target: { value: 'raum' }
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Koordinate 3 auf Karte wählen' }));
+
+    const applyPosition = await screen.findByRole('button', { name: 'Position übernehmen' });
+    await waitFor(() => expect((applyPosition as HTMLButtonElement).disabled).toBe(false));
+    await fireEvent.click(applyPosition);
+
+    expect((screen.getByLabelText('Breitengrad 1') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Längengrad 2') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Breitengrad 3') as HTMLInputElement).value).toBe('50.123457');
+    expect((screen.getByLabelText('Längengrad 3') as HTMLInputElement).value).toBe('8.987654');
+  });
+
+  it('offers map selection for a cable waypoint as well as a point', async () => {
+    render(LocationForm, { props: { onSave: vi.fn(), onCancel: vi.fn() } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Koordinate 1 auf Karte wählen' }));
+    const applyPoint = await screen.findByRole('button', { name: 'Position übernehmen' });
+    await waitFor(() => expect((applyPoint as HTMLButtonElement).disabled).toBe(false));
+    await fireEvent.click(applyPoint);
+    expect((screen.getByLabelText('Breitengrad 1') as HTMLInputElement).value).toBe('50.123457');
+
+    await fireEvent.change(screen.getByLabelText('Koordinatenart'), {
+      target: { value: 'leitung' }
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Koordinate 2 auf Karte wählen' }));
+    const applyWaypoint = await screen.findByRole('button', { name: 'Position übernehmen' });
+    await waitFor(() => expect((applyWaypoint as HTMLButtonElement).disabled).toBe(false));
+    await fireEvent.click(applyWaypoint);
+    expect((screen.getByLabelText('Breitengrad 2') as HTMLInputElement).value).toBe('50.123457');
+    expect((screen.getByLabelText('Längengrad 2') as HTMLInputElement).value).toBe('8.987654');
   });
 });
