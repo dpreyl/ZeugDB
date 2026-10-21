@@ -11,11 +11,6 @@ export default defineConfig({
       ...(process.env.VITEST
         ? { 'sql.js': new URL('./node_modules/sql.js/dist/sql-wasm.js', import.meta.url).pathname }
         : {}),
-      // LightningFS nur im Browser verfügbar — Tests verwenden Mock
-      'isomorphic-git/lightningfs.js': new URL(
-        './src/lib/__mocks__/lightningfs.ts',
-        import.meta.url
-      ).pathname,
     }
   },
   test: {
@@ -26,7 +21,8 @@ export default defineConfig({
       'src/**/*.test.ts',
       'src/**/*.spec.ts',
       'static/**/*.test.js',
-      'scripts/**/*.test.js'
+      'scripts/**/*.test.js',
+      'gitea/**/*.test.ts'
     ]
   }
 });

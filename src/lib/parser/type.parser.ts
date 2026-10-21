@@ -76,8 +76,8 @@ function parseFieldLine(rest: string, nr: number): FieldType {
       pflicht = false;
     } else if (part === 'sensitiv') {
       sensitiv = true;
-    } else if (part.includes('|')) {
-      optionen = part;
+    } else if (part) {
+      optionen = optionen ? `${optionen}|${part}` : part;
     }
   }
 

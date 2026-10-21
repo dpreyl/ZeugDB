@@ -1,5 +1,6 @@
 import { getAssetStore, type SerializedAsset } from '../stores/assets.store.svelte';
 import { getTypesStore } from '../stores/types.store.svelte';
+import { getComponentsStore } from '../stores/components.store.svelte';
 import { getLocationsStore } from '../stores/locations.store.svelte';
 import type { AssetRow } from '../db';
 import type { TypeDefinition } from '../parser/types';
@@ -9,6 +10,7 @@ import type { ParsedAsset } from '../parser/types';
 
 const ASSETS_KEY = 'zeugdb:assets';
 const TYPES_KEY = 'zeugdb:types';
+const COMPONENTS_KEY = 'zeugdb:components';
 const LOCATIONS_KEY = 'zeugdb:locations';
 
 /**
@@ -18,7 +20,8 @@ function serializeAssets(): string {
   const store = getAssetStore();
   const data = store.all.map(row => ({
     row,
-    fields: store.getFields(row.id)
+    fields: store.getFields(row.id),
+    blocks: store.getBlocks(row.id)
   }));
   return JSON.stringify(data);
 }
@@ -28,13 +31,18 @@ function serializeAssets(): string {
  */
 function deserializeAssets(json: string): void {
   const store = getAssetStore();
-  const data: { row: AssetRow; fields: Record<string, string> }[] = JSON.parse(json);
+  const data: {
+    row: AssetRow;
+    fields: Record<string, string>;
+    blocks?: ReturnType<typeof store.getBlocks>;
+  }[] = JSON.parse(json);
 
   store.setAll(data.map(d => d.row));
-  for (const { row, fields } of data) {
+  for (const { row, fields, blocks } of data) {
     if (Object.keys(fields).length > 0) {
       store.setFields(row.id, fields);
     }
+    if (blocks) store.setBlocks(row.id, blocks);
   }
 }
 
@@ -46,6 +54,10 @@ function serializeTypes(): string {
   return JSON.stringify(store.all);
 }
 
+function serializeComponents(): string {
+  return JSON.stringify(getComponentsStore().all);
+}
+
 /**
  * Deserialisiert gespeicherte Typen zurück in den Store.
  */
@@ -53,6 +65,10 @@ function deserializeTypes(json: string): void {
   const store = getTypesStore();
   const data: TypeDefinition[] = JSON.parse(json);
   store.setAll(data);
+}
+
+function deserializeComponents(json: string): void {
+  getComponentsStore().setAll(JSON.parse(json));
 }
 
 /**
@@ -79,6 +95,7 @@ function deserializeLocations(json: string): void {
 export function initializeStore(): void {
   const assetStore = getAssetStore();
   const typesStore = getTypesStore();
+  const componentsStore = getComponentsStore();
   const locationsStore = getLocationsStore();
 
   // Bereits initialisiert?
@@ -87,10 +104,12 @@ export function initializeStore(): void {
   // Aus localStorage laden
   const hasAssets = loadFromStorage(ASSETS_KEY, deserializeAssets);
   const hasTypes = loadFromStorage(TYPES_KEY, deserializeTypes);
+  const hasComponents = loadFromStorage(COMPONENTS_KEY, deserializeComponents);
   const hasLocations = loadFromStorage(LOCATIONS_KEY, deserializeLocations);
 
   // Wenn nichts geladen wurde, Demo-Daten seeden
   if (!hasAssets) seedDemoData();
+  if (!hasComponents) componentsStore.clear();
 }
 
 /**
@@ -118,6 +137,7 @@ export function persistStore(): void {
   try {
     localStorage.setItem(ASSETS_KEY, serializeAssets());
     localStorage.setItem(TYPES_KEY, serializeTypes());
+    localStorage.setItem(COMPONENTS_KEY, serializeComponents());
     localStorage.setItem(LOCATIONS_KEY, serializeLocations());
   } catch {
     // Speicher voll — ignorieren
@@ -138,10 +158,10 @@ export function serializeAssetFile(asset: SerializedAsset): string {
   };
   const metadata = new Set(['id', 'type', 'location', 'erstellt', 'geaendert']);
   for (const [key, value] of Object.entries(asset)) {
-    if (!metadata.has(key) && value) direct[key] = value;
+    if (!metadata.has(key) && key !== 'blocks' && typeof value === 'string' && value) direct[key] = value;
   }
 
-  const parsed: ParsedAsset = { direct, blocks: {} };
+  const parsed: ParsedAsset = { direct, blocks: asset.blocks ?? {} };
   return serializeAsset(parsed);
 }
 

@@ -3,6 +3,7 @@
   import type { Location } from '$lib/parser/types';
   import type { Map as LeafletMap, LayerGroup } from 'leaflet';
   import { getLocationCenter, getLocationShape } from './location-shapes';
+  import { getLastMapView, saveLastMapView } from './map-view';
   import 'leaflet/dist/leaflet.css';
 
   type Props = {
@@ -22,6 +23,7 @@
   let map = $state<LeafletMap | null>(null);
   let overlays: LayerGroup | null = null;
   let leaflet: typeof import('leaflet') | null = null;
+  let restoredLastView = false;
 
   onMount(() => {
     let disposed = false;
@@ -29,7 +31,19 @@
       if (disposed) return;
       const L = (module as unknown as { default: typeof import('leaflet') }).default;
       leaflet = L;
-      const currentMap = L.map(container).setView([48.1351, 11.582], 13);
+      const lastView = getLastMapView();
+      restoredLastView = lastView !== null;
+      const initialCenter: [number, number] = lastView
+        ? [lastView.center.lat, lastView.center.lon]
+        : [0, 0];
+      const currentMap = L.map(container).setView(initialCenter, lastView?.zoom ?? 2);
+      currentMap.on('moveend', () => {
+        const center = currentMap.getCenter();
+        saveLastMapView({
+          center: { lat: center.lat, lon: center.lng },
+          zoom: currentMap.getZoom()
+        });
+      });
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         crossOrigin: 'anonymous',
@@ -103,7 +117,7 @@
       const location = currentLocations.find((item) => item.id === currentSelectedId);
       const center = location ? getLocationCenter(location) : null;
       if (center) currentMap.setView([center.lat, center.lon], 17);
-    } else if (bounds.length > 0) {
+    } else if (bounds.length > 0 && !restoredLastView) {
       currentMap.fitBounds(bounds, { padding: [24, 24], maxZoom: 16 });
     }
   });

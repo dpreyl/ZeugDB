@@ -33,6 +33,15 @@ describe('parseType', () => {
     ]);
   });
 
+  it('parst einzelne und mehrere kompatible Typ-IDs einer Asset-Referenz', () => {
+    const parsed = parseType('adapter', [
+      'feld: kabel, asset_ref, hdmi-kabel|usb-c',
+      'feld: geraet, asset_ref, projektor'
+    ].join('\n'));
+
+    expect(parsed.fields.map(field => field.optionen)).toEqual(['hdmi-kabel|usb-c', 'projektor']);
+  });
+
   it('parsed Block-Definitionen', () => {
     const result = parseType('_base', baseType);
     expect(result.blocks).toEqual([

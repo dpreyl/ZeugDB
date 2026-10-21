@@ -6,7 +6,8 @@ const mocks = vi.hoisted(() => {
     setView: vi.fn(),
     on: vi.fn(),
     remove: vi.fn(),
-    getCenter: vi.fn(() => ({ lat: 48.2, lng: 11.6 }))
+    getCenter: vi.fn(() => ({ lat: 48.2, lng: 11.6 })),
+    getZoom: vi.fn(() => 13)
   };
   map.setView.mockReturnValue(map);
   map.on.mockReturnValue(map);
@@ -23,11 +24,20 @@ vi.mock('leaflet/dist/leaflet.css', () => ({}));
 import CoordinatePicker from './CoordinatePicker.svelte';
 
 describe('CoordinatePicker', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mocks.map.getCenter.mockReturnValue({ lat: 48.2, lng: 11.6 });
+    mocks.map.getZoom.mockReturnValue(13);
+  });
   afterEach(() => cleanup());
 
   it('starts at the active coordinate and applies the map center', async () => {
     const onSelect = vi.fn();
+    localStorage.setItem('zeugdb.map-view.v1', JSON.stringify({
+      center: { lat: 47.3769, lon: 8.5417 },
+      zoom: 15
+    }));
     render(CoordinatePicker, {
       props: {
         coordinate: { lat: 51.5, lon: -0.12 },
@@ -56,5 +66,22 @@ describe('CoordinatePicker', () => {
 
     await waitFor(() => expect(mocks.map.setView).toHaveBeenCalledWith([48.1351, 11.582], 13));
     expect(screen.getByText(/Verschiebe die Karte/)).toBeTruthy();
+  });
+
+  it('restores the last map view when opening another empty coordinate picker', async () => {
+    render(CoordinatePicker, { props: { coordinate: null, onSelect: vi.fn() } });
+    await waitFor(() => expect(mocks.leaflet.map).toHaveBeenCalledOnce());
+
+    mocks.map.getCenter.mockReturnValue({ lat: 47.3769, lng: 8.5417 });
+    mocks.map.getZoom.mockReturnValue(15);
+    const moveEnd = mocks.map.on.mock.calls.find(([event]) => event === 'moveend')?.[1] as
+      (() => void) | undefined;
+    moveEnd?.();
+
+    cleanup();
+    vi.clearAllMocks();
+    render(CoordinatePicker, { props: { coordinate: null, onSelect: vi.fn() } });
+
+    await waitFor(() => expect(mocks.map.setView).toHaveBeenCalledWith([47.3769, 8.5417], 15));
   });
 });

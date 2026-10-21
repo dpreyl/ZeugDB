@@ -1,7 +1,23 @@
 import * as git from 'isomorphic-git';
-import { LightningFS } from 'isomorphic-git/lightningfs.js';
+import LightningFS from '@isomorphic-git/lightning-fs';
 import * as HTTP from 'isomorphic-git/http/web';
+import { installBufferPolyfill } from './buffer-polyfill';
 import type { RepoFs } from '../fs/repo-fs';
+
+installBufferPolyfill();
+
+function normalizeFsPath(path: string): string {
+  const segments: string[] = [];
+  for (const segment of path.split('/')) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') {
+      segments.pop();
+      continue;
+    }
+    segments.push(segment);
+  }
+  return `/${segments.join('/')}`;
+}
 
 /**
  * Git-Authentifizierungsdaten.
@@ -34,38 +50,50 @@ export interface StatusEntry {
  * Git-Operationen (init, clone, push, pull, commit) nutzen isomorphic-git.
  */
 export class GitRepo implements RepoFs {
-  private fs: LightningFS;
+  private fs: InstanceType<typeof LightningFS>;
 
-  constructor(db: IDBDatabase) {
-    this.fs = new LightningFS(db);
+  constructor(name = 'zeugdb-git') {
+    this.fs = new LightningFS(name);
   }
 
-  getFs(): LightningFS {
+  getFs(): InstanceType<typeof LightningFS> {
     return this.fs;
   }
 
   // --- RepoFs (Dateisystem) ---
 
   async writeFile(path: string, content: string): Promise<void> {
-    const separator = path.lastIndexOf('/');
+    const fsPath = normalizeFsPath(path);
+    const separator = fsPath.lastIndexOf('/');
     if (separator > 0) {
-      await this.fs.mkdir(path.slice(0, separator), { recursive: true });
+      const parent = fsPath.slice(1, separator);
+      let directory = '/';
+
+      for (const segment of parent.split('/')) {
+        directory = `${directory.replace(/\/$/, '')}/${segment}`;
+        try {
+          await this.fs.promises.mkdir(directory);
+        } catch (error) {
+          if ((error as { code?: string }).code !== 'EEXIST') {
+            throw error;
+          }
+        }
+      }
     }
-    await this.fs.writeFile(path, new TextEncoder().encode(content));
+    await this.fs.promises.writeFile(fsPath, new TextEncoder().encode(content));
   }
 
   async readFile(path: string): Promise<string> {
-    const data = await this.fs.readFile(path);
+    const data = await this.fs.promises.readFile(normalizeFsPath(path));
     return new TextDecoder().decode(data);
   }
 
   async readdir(dir: string): Promise<string[]> {
-    const entries = await this.fs.readdir(dir);
-    return entries.map((e: { name: string }) => e.name);
+    return this.fs.promises.readdir(normalizeFsPath(dir));
   }
 
   async unlink(path: string): Promise<void> {
-    await this.fs.unlink(path);
+    await this.fs.promises.unlink(normalizeFsPath(path));
   }
 
   // --- Git-Operationen ---
@@ -76,7 +104,7 @@ export class GitRepo implements RepoFs {
   async init(opts: { authorName: string; authorEmail: string }): Promise<void> {
     await git.init({ fs: this.fs, dir: '/' });
     // Schreiben der User-Konfiguration ins Config-File
-    await this.fs.writeFile(
+    await this.fs.promises.writeFile(
       '/.git/config',
       `[user]\n\tname = ${opts.authorName}\n\temail = ${opts.authorEmail}\n`
     );
@@ -283,7 +311,7 @@ export class GitRepo implements RepoFs {
   }): Promise<void> {
     if (opts.squash) {
       // Squash-Merge: Änderungen mergen, aber keinen Merge-Commit erstellen
-      await git.merge({
+      const mergeResult = await git.merge({
         fs: this.fs,
         dir: '/',
         theirs: opts.branch,
@@ -294,11 +322,15 @@ export class GitRepo implements RepoFs {
           email: opts.authorEmail
         }
       });
-      // Manuelles Commit der geänderten Dateien
+      if (!mergeResult.tree) return;
+
+      // Der Merge-Baum enthält die zusammengeführten Dateien. Ein Commit
+      // ohne expliziten Baum würde nur den unveränderten Index committen.
       await git.commit({
         fs: this.fs,
         dir: '/',
         message: opts.message ?? `Squash merge ${opts.branch}`,
+        tree: mergeResult.tree,
         author: {
           name: opts.authorName,
           email: opts.authorEmail
@@ -346,19 +378,5 @@ export class GitRepo implements RepoFs {
       ref
     });
   }
-}
-
-/**
- * Öffnet (oder erstellt) die IndexedDB für das Git-Repo.
- */
-export function openGitDb(name = 'zeugdb-git'): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(name, 1);
-    request.onupgradeneeded = () => {
-      // LightningFS erstellt seine eigenen Objekte
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
 }
 

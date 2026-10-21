@@ -72,6 +72,18 @@ describe('AssetStore fields', () => {
     expect(fields.notizen).toBe('Test');
   });
 
+  it('speichert Blockinstanzen eines Assets und klont die Rückgabe', () => {
+    const id = store.createAsset({
+      type: 'projektor',
+      location: null,
+      blocks: { port: { '0': { name: 'HDMI OUT' } } }
+    });
+
+    const blocks = store.getBlocks(id);
+    blocks.port['0'].name = 'verändert';
+    expect(store.getBlocks(id)).toEqual({ port: { '0': { name: 'HDMI OUT' } } });
+  });
+
   it('wirft Fehler bei setFields ohne Asset', () => {
     expect(() => store.setFields('xxx', { foo: 'bar' })).toThrow();
   });
@@ -107,6 +119,13 @@ describe('AssetStore fields', () => {
     const asset = store.findById(id)!;
     expect(asset.location).toBe('schrank-a');
     expect(store.getField(id, 'zustand')).toBe('defekt');
+  });
+
+  it('aktualisiert Blockinstanzen zusammen mit Asset-Feldern', () => {
+    const id = store.createAsset({ type: 'projektor', location: null });
+    store.updateAsset(id, { blocks: { port: { '1': { name: 'HDMI IN' } } } });
+
+    expect(store.getBlocks(id)).toEqual({ port: { '1': { name: 'HDMI IN' } } });
   });
 
   it('gibt vollständiges Asset mit Feldern als SerializedAsset zurück', () => {

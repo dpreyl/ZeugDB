@@ -1,16 +1,18 @@
 import { type AssetRow } from '../db';
+import type { AssetBlockValues } from '../components/asset-blocks.helpers';
 
 /**
  * Erweitertes Asset mit allen Feldern (für UI).
  */
 export interface SerializedAsset extends AssetRow {
+  blocks?: AssetBlockValues;
   hersteller: string;
   modell: string;
   seriennummer: string;
   inventarnummer: string;
   zustand: string;
   notizen: string;
-  [key: string]: string | null;
+  [key: string]: string | null | AssetBlockValues | undefined;
 }
 
 function generateId(): string {
@@ -24,16 +26,19 @@ function generateId(): string {
 export class AssetStore {
   declare all: AssetRow[];
   #fields: Map<string, Record<string, string>>;
+  #blocks: Map<string, AssetBlockValues>;
 
   constructor() {
     // $state macht das Array reaktiv — Komponenten, die auf `store.all`
     // zugreifen, werden bei Mutationen neu gerendert.
     this.all = $state([]);
     this.#fields = new Map();
+    this.#blocks = new Map();
   }
 
   setAll(rows: AssetRow[]): void {
     this.#fields.clear();
+    this.#blocks.clear();
     this.all = rows;
   }
 
@@ -64,6 +69,17 @@ export class AssetStore {
     return { ...this.#fields.get(assetId) ?? {} };
   }
 
+  setBlocks(assetId: string, blocks: AssetBlockValues): void {
+    if (!this.findById(assetId)) {
+      throw new Error(`Asset '${assetId}' nicht gefunden`);
+    }
+    this.#blocks.set(assetId, cloneBlocks(blocks));
+  }
+
+  getBlocks(assetId: string): AssetBlockValues {
+    return cloneBlocks(this.#blocks.get(assetId) ?? {});
+  }
+
   /**
    * Gibt ein vollständiges Asset mit allen Feldern als flaches Objekt zurück.
    */
@@ -77,6 +93,7 @@ export class AssetStore {
       location: row.location,
       erstellt: row.erstellt,
       geaendert: row.geaendert,
+      blocks: this.getBlocks(id),
       hersteller: fields['hersteller'] ?? '',
       modell: fields['modell'] ?? '',
       seriennummer: fields['seriennummer'] ?? '',
@@ -91,7 +108,12 @@ export class AssetStore {
    * Erstellt ein neues Asset mit optionalen Feldern.
    * Gibt die neue Asset-ID zurück.
    */
-  createAsset(input: { type: string; location?: string | null; fields?: Record<string, string> }): string {
+  createAsset(input: {
+    type: string;
+    location?: string | null;
+    fields?: Record<string, string>;
+    blocks?: AssetBlockValues;
+  }): string {
     const now = new Date().toISOString();
     const id = generateId();
     const row: AssetRow = {
@@ -105,13 +127,18 @@ export class AssetStore {
     if (input.fields && Object.keys(input.fields).length > 0) {
       this.setFields(id, input.fields);
     }
+    if (input.blocks) this.setBlocks(id, input.blocks);
     return id;
   }
 
   /**
    * Aktualisiert ein existierendes Asset (location + Felder).
    */
-  updateAsset(id: string, input: { location?: string | null; fields?: Record<string, string> }): void {
+  updateAsset(id: string, input: {
+    location?: string | null;
+    fields?: Record<string, string>;
+    blocks?: AssetBlockValues;
+  }): void {
     const idx = this.all.findIndex(a => a.id === id);
     if (idx === -1) throw new Error(`Asset '${id}' nicht gefunden`);
     if (input.location !== undefined) {
@@ -120,6 +147,7 @@ export class AssetStore {
     if (input.fields && Object.keys(input.fields).length > 0) {
       this.setFields(id, input.fields);
     }
+    if (input.blocks) this.setBlocks(id, input.blocks);
   }
 
   remove(id: string): boolean {
@@ -127,13 +155,26 @@ export class AssetStore {
     if (idx === -1) return false;
     this.all.splice(idx, 1);
     this.#fields.delete(id);
+    this.#blocks.delete(id);
     return true;
   }
 
   clear(): void {
     this.all = [];
     this.#fields.clear();
+    this.#blocks.clear();
   }
+}
+
+function cloneBlocks(blocks: AssetBlockValues): AssetBlockValues {
+  return Object.fromEntries(
+    Object.entries(blocks).map(([blockId, instances]) => [
+      blockId,
+      Object.fromEntries(
+        Object.entries(instances).map(([index, fields]) => [index, { ...fields }])
+      )
+    ])
+  );
 }
 
 let _store: AssetStore | null = null;

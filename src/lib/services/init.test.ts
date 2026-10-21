@@ -6,6 +6,7 @@ import {
 } from './init';
 import { getAssetStore, resetAssetStore } from '../stores/assets.store.svelte';
 import { getTypesStore, resetTypesStore } from '../stores/types.store.svelte';
+import { getComponentsStore, resetComponentsStore } from '../stores/components.store.svelte';
 import { getLocationsStore, resetLocationsStore } from '../stores/locations.store.svelte';
 
 const ASSETS_KEY = 'zeugdb:assets';
@@ -16,6 +17,7 @@ describe('init', () => {
   beforeEach(() => {
     resetAssetStore();
     resetTypesStore();
+    resetComponentsStore();
     resetLocationsStore();
     localStorage.clear();
   });
@@ -23,6 +25,7 @@ describe('init', () => {
   afterEach(() => {
     resetAssetStore();
     resetTypesStore();
+    resetComponentsStore();
     resetLocationsStore();
     localStorage.clear();
   });
@@ -66,6 +69,22 @@ describe('init', () => {
     expect(getAssetStore().all.length).toBe(originalCount);
   });
 
+  it('lädt gespeicherte Blockwerte eines Assets nach einem Neustart', () => {
+    const assetStore = getAssetStore();
+    const assetId = assetStore.createAsset({
+      type: 'projektor',
+      blocks: { port: { '0': { name: 'HDMI OUT' } } }
+    });
+    persistStore();
+
+    resetAssetStore();
+    initializeStore();
+
+    expect(getAssetStore().getBlocks(assetId)).toEqual({
+      port: { '0': { name: 'HDMI OUT' } }
+    });
+  });
+
   it('persistStore speichert neue Assets', () => {
     const store = getAssetStore();
     store.createAsset({
@@ -101,6 +120,33 @@ describe('init', () => {
     expect(output).toContain('lichtstaerke: 5000');
     expect(output).toContain('aufloesung: 4K');
     expect(output).not.toContain('location:');
+  });
+
+  it('serializes block instances and their referenced asset ids', () => {
+    const output = serializeAssetFile({
+      id: 'projector-1',
+      type: 'projektor',
+      location: null,
+      erstellt: null,
+      geaendert: null,
+      hersteller: '',
+      modell: '',
+      seriennummer: '',
+      inventarnummer: '',
+      zustand: '',
+      notizen: '',
+      blocks: { port: { '0': { name: 'HDMI OUT', kabel: 'cable-1' } } }
+    });
+
+    expect(output).toContain('port[0].name: HDMI OUT');
+    expect(output).toContain('port[0].kabel: cable-1');
+  });
+
+  it('persistiert Komponentendefinitionen für den nächsten Start', () => {
+    getComponentsStore().add({ id: 'port', name: 'Port', fields: [] });
+    persistStore();
+    const saved = JSON.parse(localStorage.getItem('zeugdb:components')!);
+    expect(saved).toEqual([{ id: 'port', name: 'Port', fields: [] }]);
   });
 
   it('persistStore speichert neue Typen', () => {

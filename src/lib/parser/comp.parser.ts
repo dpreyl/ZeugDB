@@ -38,7 +38,7 @@ function parseField(parts: string[], nr: number): FieldType {
     if (part === 'pflicht') pflicht = true;
     else if (part === 'optional') pflicht = false;
     else if (part === 'sensitiv') sensitiv = true;
-    else if (part.includes('|')) optionen = part;
+    else if (part && part !== name && part !== art) optionen = optionen ? `${optionen}|${part}` : part;
   }
 
   return { nr, name, art, optionen, pflicht, sensitiv };

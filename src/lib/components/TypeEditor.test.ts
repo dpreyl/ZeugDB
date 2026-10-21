@@ -31,7 +31,7 @@ describe('TypeEditor', () => {
         sensitiv: false
       }],
       blocks: []
-    });
+    }, []);
   });
 
   it('loads an existing type and displays validation errors instead of saving invalid fields', async () => {
@@ -60,5 +60,39 @@ describe('TypeEditor', () => {
 
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByRole('alert').textContent).toContain('Bitte gib für jedes Feld einen Namen ein.');
+  });
+
+  it('definiert Felder für einen Block und speichert die Komponente mit dem Typ', async () => {
+    const onSave = vi.fn();
+    render(TypeEditor, {
+      props: { type: null, existingTypes: [], existingComponents: [], onSave, onCancel: vi.fn() }
+    });
+
+    await fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'Projektor' } });
+    await fireEvent.click(screen.getByRole('button', { name: '+ Baustein hinzufügen' }));
+    await fireEvent.input(screen.getByPlaceholderText('z. B. port'), { target: { value: 'port' } });
+    await fireEvent.input(screen.getByPlaceholderText('z. B. Port'), { target: { value: 'Port' } });
+    await fireEvent.click(screen.getByRole('button', { name: '+ Komponentenfeld' }));
+    await fireEvent.input(screen.getByLabelText('Komponentenfeldname'), { target: { value: 'kabel' } });
+    await fireEvent.change(screen.getByLabelText('Komponenten-Eingabetyp'), { target: { value: 'asset_ref' } });
+    await fireEvent.click(screen.getByRole('button', { name: '+ Typ-ID' }));
+    await fireEvent.input(screen.getByLabelText('Komponenten-Asset-Typ'), { target: { value: 'hdmi-kabel' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'projektor', blocks: [{ compId: 'port', min: 0, max: 1 }] }),
+      [{
+        id: 'port',
+        name: 'Port',
+        fields: [{
+          nr: 0,
+          name: 'kabel',
+          art: 'asset_ref',
+          optionen: 'hdmi-kabel',
+          pflicht: false,
+          sensitiv: false
+        }]
+      }]
+    );
   });
 });

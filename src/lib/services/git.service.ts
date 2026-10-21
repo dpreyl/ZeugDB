@@ -1,13 +1,14 @@
-import { GitRepo, type GitProgress, openGitDb } from '../git/repo';
+import { GitRepo, type GitProgress } from '../git/repo';
 import type { Database } from '../db';
 import { syncAssetsToDb } from '../fs/repo-sync';
 import { getAssetStore } from '../stores/assets.store.svelte';
 import { getTypesStore } from '../stores/types.store.svelte';
+import { getComponentsStore } from '../stores/components.store.svelte';
 import { getLocationsStore } from '../stores/locations.store.svelte';
-import { parseAsset } from '../parser/asset.parser';
-import { parseType } from '../parser/type.parser';
-import { parseLocation } from '../parser/location.parser';
 import { syncLocationsToGit } from './location-git-sync';
+import { syncTypesToGit } from './type-git-sync';
+import { syncComponentsToGit } from './component-git-sync';
+import { loadGitFsToStores } from './git-store-loader';
 import { persistStore, serializeAssetFile } from './init';
 import { getEditMode } from '../stores/edit-mode.svelte';
 import { getSyncMeta } from '../stores/sync-meta.svelte';
@@ -30,8 +31,10 @@ let _repo: GitRepo | null = null;
  */
 export async function getGitRepo(): Promise<GitRepo> {
   if (!_repo) {
-    const db = await openGitDb();
-    _repo = new GitRepo(db);
+    if (typeof indexedDB === 'undefined') {
+      throw new Error('Git-Repository kann nur im Browser verwendet werden');
+    }
+    _repo = new GitRepo('zeugdb-git');
   }
   return _repo;
 }
@@ -129,7 +132,7 @@ export async function pullFromRemote(
 
 /**
  * Zieht Änderungen vom Remote und synchronisiert direkt die Stores
- * (ohne Datenbank-Instanz). Liest .asset, .type und .location Dateien
+ * (ohne Datenbank-Instanz). Liest .asset, .type, .comp und .location Dateien
  * aus dem Git-FS und aktualisiert die Stores.
  */
 export async function pullToStores(
@@ -145,7 +148,7 @@ export async function pullToStores(
     onprogress
   });
   // Nach dem Pull die Dateien aus dem Git-FS in die Stores laden
-  await syncGitFsToStores(repo);
+  await loadGitFsToStores(repo);
   getSyncMeta().update(new Date(), 'pull');
 }
 
@@ -190,79 +193,6 @@ export async function getSyncStatus(): Promise<{
 }
 
 /**
- * Liest alle Dateien aus dem Git-FS und lädt sie in die Stores.
- * Wird nach einem Pull ohne DB aufgerufen.
- */
-async function syncGitFsToStores(repo: GitRepo): Promise<void> {
-  const assetStore = getAssetStore();
-  const typesStore = getTypesStore();
-  const locationsStore = getLocationsStore();
-
-  // Assets laden
-  const assetRows: { row: import('../db').AssetRow; fields: Record<string, string> }[] = [];
-  try {
-    const assetFiles = await repo.readdir('assets');
-    for (const file of assetFiles) {
-      if (!file.endsWith('.asset')) continue;
-      const content = await repo.readFile(`assets/${file}`);
-      const { direct } = parseAsset(content);
-      const row: import('../db').AssetRow = {
-        id: direct['id'] ?? file.replace('.asset', ''),
-        type: direct['type'] ?? '',
-        location: direct['location'] ?? null,
-        erstellt: direct['erstellt'] ?? null,
-        geaendert: direct['geaendert'] ?? null
-      };
-      const fields: Record<string, string> = {};
-      const rowKeys = new Set(['id', 'type', 'location', 'erstellt', 'geaendert']);
-      for (const [k, v] of Object.entries(direct)) {
-        if (!rowKeys.has(k)) fields[k] = v;
-      }
-      assetRows.push({ row, fields });
-    }
-  } catch {
-    // Verzeichnis nicht vorhanden
-  }
-  assetStore.setAll(assetRows.map(a => a.row));
-  for (const { row, fields } of assetRows) {
-    if (Object.keys(fields).length > 0) {
-      assetStore.setFields(row.id, fields);
-    }
-  }
-
-  // Typen laden
-  typesStore.clear();
-  try {
-    const typeFiles = await repo.readdir('types');
-    for (const file of typeFiles) {
-      if (!file.endsWith('.type')) continue;
-      const id = file.replace('.type', '');
-      const content = await repo.readFile(`types/${file}`);
-      const parsed = parseType(id, content);
-      typesStore.add(parsed);
-    }
-  } catch {
-    // Verzeichnis nicht vorhanden
-  }
-
-  // Standorte laden
-  locationsStore.clear();
-  try {
-    const locFiles = await repo.readdir('locations');
-    for (const file of locFiles) {
-      if (!file.endsWith('.location')) continue;
-      const content = await repo.readFile(`locations/${file}`);
-      const parsed = parseLocation(content);
-      locationsStore.add(parsed);
-    }
-  } catch {
-    // Verzeichnis nicht vorhanden
-  }
-
-  persistStore();
-}
-
-/**
  * Erzeugt einen Edit-Branch und wechselt dorthin.
  */
 export async function createEditBranch(
@@ -304,13 +234,23 @@ export async function commitAllToGit(
   const locationChanges = await syncLocationsToGit(repo, locations.all);
   changedFiles.push(...locationChanges.changedFiles);
 
-  if (changedFiles.length === 0 && locationChanges.deletedFiles.length === 0) return null;
+  const typeChanges = await syncTypesToGit(repo, getTypesStore().all);
+  changedFiles.push(...typeChanges.changedFiles);
+  const componentChanges = await syncComponentsToGit(repo, getComponentsStore().all);
+  changedFiles.push(...componentChanges.changedFiles);
+  const deletedFiles = [
+    ...locationChanges.deletedFiles,
+    ...typeChanges.deletedFiles,
+    ...componentChanges.deletedFiles
+  ];
+
+  if (changedFiles.length === 0 && deletedFiles.length === 0) return null;
   return repo.commit({
     message,
     authorName,
     authorEmail,
     files: changedFiles,
-    deletedFiles: locationChanges.deletedFiles
+    deletedFiles
   });
 }
 
@@ -325,7 +265,7 @@ async function readFileOrNull(repo: GitRepo, path: string): Promise<string | nul
 /**
  * Vollständiger Sync-Workflow:
  * 1. Fetch vom Remote
- * 2. Zu main wechseln
+ * 2. Zu main wechseln und mit origin/main aktualisieren
  * 3. Squash-Merge des Edit-Branches
  * 4. Push nach origin/main
  * 5. Edit-Branch löschen
@@ -359,6 +299,19 @@ export async function syncEditBranch(
   onprogress?.({ message: 'Wechsle zu main...' });
   await repo.checkoutBranch('main');
 
+  // Lokales main auf den Stand des Remotes bringen, bevor der Edit-Branch
+  // integriert wird. Andernfalls kann der Sync ein veraltetes main pushen.
+  onprogress?.({ message: 'Aktualisiere main vom Server...' });
+  try {
+    await repo.mergeBranch({
+      branch: 'origin/main',
+      authorName,
+      authorEmail
+    });
+  } catch (err: any) {
+    throw new Error(`Konnte main nicht aktualisieren: ${err.message || 'Unbekannter Fehler'}`);
+  }
+
   // 3. Squash-Merge
   onprogress?.({ message: `Merge ${branch} → main (squash)...` });
   try {
@@ -391,7 +344,7 @@ export async function syncEditBranch(
 
   // 6. Stores aus Git-FS neu laden
   onprogress?.({ message: 'Lade Daten aus Git-Repo...' });
-  await syncGitFsToStores(repo);
+  await loadGitFsToStores(repo);
 
   // 7. Edit-Modus beenden
   editMode.finishEdit();
@@ -417,7 +370,7 @@ export async function discardEditBranch(): Promise<void> {
     }
   }
 
-  await syncGitFsToStores(repo);
+  await loadGitFsToStores(repo);
   editMode.discard();
 }
 
@@ -458,9 +411,11 @@ export async function fetchRemote(
       throw new Error(`Merge-Konflikt: ${err.message || 'Unbekannter Fehler'}`);
     }
   } else {
-    // Auf main: einfacher pull
+    // Read-only gehört immer zu main, auch nach einem Reload mit altem HEAD.
+    await repo.checkoutBranch('main');
     await repo.pull({
       auth: { username: config.username, token: config.token },
+      branch: 'main',
       author: { name: authorName, email: authorEmail },
       onprogress
     });
@@ -468,7 +423,7 @@ export async function fetchRemote(
 
   // 3. Stores aktualisieren
   onprogress?.({ message: 'Lade Daten aus Git-Repo...' });
-  await syncGitFsToStores(repo);
+  await loadGitFsToStores(repo);
 
   // 4. Sync-Timestamp setzen
   getSyncMeta().update(new Date(), 'pull');

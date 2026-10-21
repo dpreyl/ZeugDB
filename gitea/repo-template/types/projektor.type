@@ -1,0 +1,8 @@
+extends: _base
+name: Projektor
+kategorie: gerät
+icon: projector
+feld: hersteller, text, optional
+feld: modell, text, optional
+feld: seriennummer, text, optional, sensitiv
+feld: inventarnummer, text, optional

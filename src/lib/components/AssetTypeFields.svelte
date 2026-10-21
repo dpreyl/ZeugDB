@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { FieldType } from '$lib/parser/types';
+  import type { FieldType, TypeDefinition } from '$lib/parser/types';
+  import { compatibleAssets, type AssetReferenceOption } from './asset-blocks.helpers';
   import { fieldOptions } from './asset-type-fields';
 
   type Props = {
@@ -7,9 +8,20 @@
     values: Record<string, string>;
     editable: boolean;
     onValueChange: (name: string, value: string) => void;
+    assets?: AssetReferenceOption[];
+    types?: TypeDefinition[];
+    excludedAssetId?: string;
   };
 
-  let { fields, values, editable, onValueChange }: Props = $props();
+  let {
+    fields,
+    values,
+    editable,
+    onValueChange,
+    assets = [],
+    types = [],
+    excludedAssetId
+  }: Props = $props();
 
   function optionsFor(field: FieldType): string[] {
     return field.art === 'boolean' ? ['true', 'false'] : fieldOptions(field);
@@ -19,6 +31,7 @@
     const value = values[field.name] ?? '';
     if (!value) return '—';
     if (field.art === 'boolean') return value === 'true' ? 'Ja' : value === 'false' ? 'Nein' : value;
+    if (field.art === 'asset_ref') return assets.find(asset => asset.id === value)?.label ?? value;
     return value;
   }
 </script>
@@ -29,7 +42,7 @@
       {#if editable}
         <label class="block text-sm font-medium text-gray-700">
           {field.name}{#if field.pflicht}<span aria-hidden="true"> *</span>{/if}
-          {#if field.art === 'dropdown' || field.art === 'auswahl' || field.art === 'boolean'}
+          {#if field.art === 'dropdown' || field.art === 'auswahl' || field.art === 'boolean' || field.art === 'asset_ref'}
             <select
               name={field.name}
               value={values[field.name] ?? ''}
@@ -38,9 +51,15 @@
               class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             >
               <option value="">Bitte wählen</option>
-              {#each optionsFor(field) as option (option)}
-                <option value={option}>{field.art === 'boolean' ? (option === 'true' ? 'Ja' : 'Nein') : option}</option>
-              {/each}
+              {#if field.art === 'asset_ref'}
+                {#each compatibleAssets(field, assets, types, excludedAssetId) as option (option.id)}
+                  <option value={option.id}>{option.label}</option>
+                {/each}
+              {:else}
+                {#each optionsFor(field) as option (option)}
+                  <option value={option}>{field.art === 'boolean' ? (option === 'true' ? 'Ja' : 'Nein') : option}</option>
+                {/each}
+              {/if}
             </select>
           {:else}
             <input

@@ -1,0 +1,6 @@
+extends: _base
+name: HDMI-Kabel
+kategorie: kabel
+feld: hersteller, text, optional
+feld: modell, text, optional
+feld: länge, text, optional

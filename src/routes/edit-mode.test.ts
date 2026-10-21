@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getEditMode, resetEditMode } from '$lib/stores/edit-mode.svelte';
+import type { AssetRow } from '$lib/db';
+import type { ComponentDefinition, TypeDefinition } from '$lib/parser/types';
 
 const mocks = vi.hoisted(() => {
   const overlay = {
@@ -32,8 +34,9 @@ const mocks = vi.hoisted(() => {
       remove: vi.fn()
     },
     assets: {
-      all: [],
+      all: [] as AssetRow[],
       findFull: vi.fn(),
+      getFields: vi.fn((_id: string): Record<string, string> => ({})),
       updateAsset: vi.fn(),
       remove: vi.fn(),
       createAsset: vi.fn(() => 'asset-new')
@@ -51,10 +54,11 @@ const mocks = vi.hoisted(() => {
           { nr: 4, name: 'zustand', art: 'dropdown', optionen: 'neu|einwandfrei|defekt', pflicht: false, sensitiv: false }
         ],
         blocks: [{ compId: 'lampen', min: 0, max: 2 }]
-      }],
+      }] as TypeDefinition[],
       add: vi.fn(),
       remove: vi.fn()
     },
+    components: { all: [] as ComponentDefinition[] },
     persistStore: vi.fn(),
     goto: vi.fn(),
     leaflet,
@@ -70,6 +74,9 @@ vi.mock('$lib/stores/assets.store.svelte', () => ({
 }));
 vi.mock('$lib/stores/types.store.svelte', () => ({
   getTypesStore: () => mocks.types
+}));
+vi.mock('$lib/stores/components.store.svelte', () => ({
+  getComponentsStore: () => mocks.components
 }));
 vi.mock('$lib/services/init', () => ({ persistStore: mocks.persistStore }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
@@ -91,6 +98,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.locations.all = [{ id: 'raum-1', name: 'Raum 1', art: 'punkt', lat: 52, lon: 13 }];
   mocks.assets.all = [];
+  mocks.assets.getFields.mockReset().mockReturnValue({});
+  mocks.components.all = [];
   mocks.types.all = [{
     id: 'projektor',
     name: 'Projektor',
@@ -206,6 +215,57 @@ describe('Schreibmodus in der Oberfläche', () => {
     expect(mocks.assets.createAsset).toHaveBeenCalledWith(expect.objectContaining({
       type: 'projektor',
       fields: { 'Lichtstärke': '5000', 'Auflösung': '4K' }
+    }));
+  });
+
+  it('zeigt definierte Portfelder und kompatible Geräte beim Anlegen eines Assets', async () => {
+    enterEditMode();
+    mocks.types.all = [{
+      id: 'projektor',
+      fields: [],
+      blocks: [{ compId: 'port', min: 1, max: 4 }]
+    }];
+    mocks.components.all = [{
+      id: 'port',
+      name: 'Port',
+      fields: [{
+        nr: 0,
+        name: 'kabel',
+        art: 'asset_ref',
+        optionen: 'kabel',
+        pflicht: false,
+        sensitiv: false
+      }]
+    }];
+    mocks.assets.all = [
+      { id: 'cable-1', type: 'hdmi-kabel', location: null, erstellt: null, geaendert: null },
+      { id: 'projector-1', type: 'projektor', location: null, erstellt: null, geaendert: null }
+    ];
+    mocks.assets.getFields.mockImplementation((id: string): Record<string, string> =>
+      id === 'cable-1' ? { hersteller: 'Belkin', modell: 'HDMI' } : {}
+    );
+    mocks.types.all.push({
+      id: 'kabel',
+      fields: [],
+      blocks: []
+    });
+    mocks.types.all.push({
+      id: 'hdmi-kabel',
+      extends: 'kabel',
+      fields: [],
+      blocks: []
+    });
+    render(NewAssetPage);
+
+    const cableSelect = screen.getByLabelText('kabel') as HTMLSelectElement;
+    expect([...cableSelect.options].map(option => option.value)).toContain('cable-1');
+    expect([...cableSelect.options].map(option => option.value)).not.toContain('projector-1');
+    await fireEvent.change(cableSelect, { target: { value: 'cable-1' } });
+    await fireEvent.submit(screen.getByRole('heading', { name: 'Neues Asset' }).closest('form')!);
+
+    expect(mocks.assets.createAsset).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'projektor',
+      blocks: { port: { '0': { kabel: 'cable-1' } } }
     }));
   });
 

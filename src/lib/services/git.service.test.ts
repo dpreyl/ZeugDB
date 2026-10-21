@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   loadGitConfig,
   saveGitConfig,
+  getGitRepo,
   pushToRemote,
   pullFromRemote,
   commitChanges,
@@ -9,18 +10,58 @@ import {
   isRepoInitialized,
   getSyncStatus,
   resetGitRepo,
-  fetchRemote,
+  syncEditBranch,
   type GitConfig
 } from './git.service';
 import * as repoModule from '$lib/git/repo';
 import * as assetStoreModule from '$lib/stores/assets.store.svelte';
 import * as locationStoreModule from '$lib/stores/locations.store.svelte';
+import * as typeStoreModule from '$lib/stores/types.store.svelte';
+
+beforeEach(() => {
+  vi.stubGlobal('indexedDB', {});
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function mockGitRepo(implementation: Partial<repoModule.GitRepo>): void {
   vi.spyOn(repoModule, 'GitRepo').mockImplementation(function () {
     return implementation as repoModule.GitRepo;
   });
 }
+
+describe('git.service — lokales Dateisystem', () => {
+  afterEach(() => {
+    resetGitRepo();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('initialisiert LightningFS mit einem stabilen Dateisystemnamen', async () => {
+    const repoConstructor = vi.spyOn(repoModule, 'GitRepo');
+    repoConstructor.mockImplementation(function () {
+      return {} as repoModule.GitRepo;
+    });
+
+    await getGitRepo();
+
+    expect(repoConstructor).toHaveBeenCalledWith('zeugdb-git');
+  });
+
+  it('initialisiert LightningFS nicht außerhalb eines Browsers', async () => {
+    const repoConstructor = vi.spyOn(repoModule, 'GitRepo');
+    vi.stubGlobal('indexedDB', undefined);
+
+    try {
+      await expect(getGitRepo()).rejects.toThrow('Git-Repository kann nur im Browser verwendet werden');
+      expect(repoConstructor).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
 
 describe('git.service — Konfiguration', () => {
   beforeEach(() => {
@@ -66,7 +107,6 @@ describe('git.service — Konfiguration', () => {
 describe('git.service — Push', () => {
   beforeEach(() => {
     resetGitRepo();
-    vi.spyOn(repoModule, 'openGitDb').mockResolvedValue({} as IDBDatabase);
   });
 
   afterEach(() => {
@@ -119,7 +159,6 @@ describe('git.service — Push', () => {
 describe('git.service — Pull', () => {
   beforeEach(() => {
     resetGitRepo();
-    vi.spyOn(repoModule, 'openGitDb').mockResolvedValue({} as IDBDatabase);
   });
 
   afterEach(() => {
@@ -167,7 +206,6 @@ describe('git.service — Pull', () => {
 describe('git.service — Commit', () => {
   beforeEach(() => {
     resetGitRepo();
-    vi.spyOn(repoModule, 'openGitDb').mockResolvedValue({} as IDBDatabase);
   });
 
   afterEach(() => {
@@ -237,6 +275,34 @@ describe('git.service — Commit', () => {
     });
   });
 
+  it('committet geänderte Typdefinitionen als .type-Dateien', async () => {
+    const commit = vi.fn().mockResolvedValue('type-sha');
+    mockGitRepo({
+      readFile: vi.fn().mockRejectedValue(new Error('Datei fehlt')),
+      writeFile: vi.fn().mockResolvedValue(undefined),
+      readdir: vi.fn().mockResolvedValue([]),
+      commit
+    });
+    vi.spyOn(assetStoreModule, 'getAssetStore').mockReturnValue({
+      all: [],
+      findFull: vi.fn()
+    } as unknown as ReturnType<typeof assetStoreModule.getAssetStore>);
+    vi.spyOn(locationStoreModule, 'getLocationsStore').mockReturnValue({
+      all: []
+    } as unknown as ReturnType<typeof locationStoreModule.getLocationsStore>);
+    vi.spyOn(typeStoreModule, 'getTypesStore').mockReturnValue({
+      all: [{ id: 'projektor', name: 'Projektor', fields: [], blocks: [] }]
+    } as unknown as ReturnType<typeof typeStoreModule.getTypesStore>);
+
+    await expect(commitAllToGit('Typ geändert', 'Autor', 'a@example.com'))
+      .resolves.toBe('type-sha');
+
+    expect(commit).toHaveBeenCalledWith(expect.objectContaining({
+      files: ['types/projektor.type'],
+      deletedFiles: []
+    }));
+  });
+
   it('legt keinen leeren Commit an, wenn sich Standorte nicht geändert haben', async () => {
     const content = 'id: standort\nname: Lager';
     const commit = vi.fn();
@@ -285,32 +351,9 @@ describe('git.service — Commit', () => {
   });
 });
 
-describe('git.service — fetchRemote', () => {
-  beforeEach(async () => {
+describe('git.service — syncEditBranch', () => {
+  beforeEach(() => {
     resetGitRepo();
-    vi.spyOn(repoModule, 'openGitDb').mockResolvedValue({} as IDBDatabase);
-    // Mock edit-mode
-    const editModule = await import('$lib/stores/edit-mode.svelte');
-    vi.spyOn(editModule, 'getEditMode').mockReturnValue({
-      isEditing: false,
-      branch: null,
-      username: null,
-      enterEditMode: () => {},
-      discard: () => {},
-      finishEdit: () => {}
-    } as unknown as import('$lib/stores/edit-mode.svelte').EditMode);
-    // Mock sync-meta
-    const syncMetaModule = await import('$lib/stores/sync-meta.svelte');
-    vi.spyOn(syncMetaModule, 'getSyncMeta').mockReturnValue({
-      lastSyncAt: null,
-      lastSyncType: null,
-      update: vi.fn(),
-      getFormattedTimestamp: () => null,
-      reset: vi.fn()
-    } as unknown as import('$lib/stores/sync-meta.svelte').SyncMetaStore);
-    // Mock syncGitFsToStores via init.persistStore
-    const initModule = await import('./init');
-    vi.spyOn(initModule, 'persistStore').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -318,90 +361,74 @@ describe('git.service — fetchRemote', () => {
     vi.restoreAllMocks();
   });
 
-  it('fetcht und pullt im Read-Only-Modus', async () => {
+  it('holt origin/main nach main, bevor es den Edit-Branch einspielt und pusht', async () => {
     const mockFetch = vi.fn().mockResolvedValue(undefined);
-    const mockPull = vi.fn().mockResolvedValue(undefined);
-    const mockReaddir = vi.fn().mockResolvedValue([]);
-    mockGitRepo({
-      fetchFromRemote: mockFetch,
-      pull: mockPull,
-      readdir: mockReaddir
-    });
-
-    const config: GitConfig = {
-      url: 'http://example.com/repo.git',
-      username: 'testuser',
-      token: 'secret-token'
-    };
-    await fetchRemote(config, 'Author', 'author@example.com');
-
-    expect(mockFetch).toHaveBeenCalled();
-    expect(mockPull).toHaveBeenCalled();
-  });
-
-  it('mergt origin/main im Edit-Modus', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(undefined);
+    const mockCheckout = vi.fn().mockResolvedValue(undefined);
     const mockMerge = vi.fn().mockResolvedValue(undefined);
+    const mockPush = vi.fn().mockResolvedValue([]);
     const mockReaddir = vi.fn().mockResolvedValue([]);
+    const mockDelete = vi.fn().mockResolvedValue(undefined);
     mockGitRepo({
       fetchFromRemote: mockFetch,
+      checkoutBranch: mockCheckout,
       mergeBranch: mockMerge,
-      readdir: mockReaddir
+      push: mockPush,
+      readdir: mockReaddir,
+      deleteBranch: mockDelete
     });
 
-    // Edit-Mode aktivieren
-    const editModule = await import('$lib/stores/edit-mode.svelte');
-    vi.spyOn(editModule, 'getEditMode').mockReturnValue({
+    vi.spyOn(assetStoreModule, 'getAssetStore').mockReturnValue({
+      all: [],
+      findFull: vi.fn(),
+      setAll: vi.fn()
+    } as unknown as ReturnType<typeof assetStoreModule.getAssetStore>);
+    vi.spyOn(locationStoreModule, 'getLocationsStore').mockReturnValue({
+      all: [],
+      clear: vi.fn(),
+      add: vi.fn()
+    } as unknown as ReturnType<typeof locationStoreModule.getLocationsStore>);
+    vi.spyOn(typeStoreModule, 'getTypesStore').mockReturnValue({
+      all: [],
+      clear: vi.fn(),
+      add: vi.fn()
+    } as unknown as ReturnType<typeof typeStoreModule.getTypesStore>);
+
+    const editModeModule = await import('$lib/stores/edit-mode.svelte');
+    const editMode = {
       isEditing: true,
-      branch: 'edit/user-20250101',
-      username: 'testuser',
-      enterEditMode: () => {},
-      discard: () => {},
-      finishEdit: () => {}
-    } as unknown as import('$lib/stores/edit-mode.svelte').EditMode);
-
-    const config: GitConfig = {
-      url: 'http://example.com/repo.git',
-      username: 'testuser',
-      token: 'secret-token'
+      branch: 'edit/test-user-session',
+      username: 'test-user',
+      finishEdit: vi.fn()
     };
-    await fetchRemote(config, 'Author', 'author@example.com');
+    vi.spyOn(editModeModule, 'getEditMode').mockReturnValue(
+      editMode as unknown as import('$lib/stores/edit-mode.svelte').EditMode
+    );
 
-    expect(mockFetch).toHaveBeenCalled();
-    expect(mockMerge).toHaveBeenCalledWith(
+    await syncEditBranch(
+      { url: 'http://example.com/repo.git', username: 'test', token: 'token' },
+      'Author',
+      'author@example.com'
+    );
+
+    expect(mockMerge).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({ branch: 'origin/main' })
     );
-  });
-
-  it('aktualisiert den Sync-Meta-Timestamp', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(undefined);
-    const mockPull = vi.fn().mockResolvedValue(undefined);
-    const mockReaddir = vi.fn().mockResolvedValue([]);
-    mockGitRepo({
-      fetchFromRemote: mockFetch,
-      pull: mockPull,
-      readdir: mockReaddir
-    });
-
-    const syncMetaModule = await import('$lib/stores/sync-meta.svelte');
-    const syncMeta = syncMetaModule.getSyncMeta();
-    const updateSpy = vi.spyOn(syncMeta, 'update');
-
-    const config: GitConfig = {
-      url: 'http://example.com/repo.git',
-      username: 'testuser',
-      token: 'secret-token'
-    };
-    await fetchRemote(config, 'Author', 'author@example.com');
-
-    expect(updateSpy).toHaveBeenCalledWith(expect.any(Date), 'pull');
+    expect(mockMerge).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ branch: 'edit/test-user-session', squash: true })
+    );
+    expect(mockFetch.mock.invocationCallOrder[0]).toBeLessThan(mockCheckout.mock.invocationCallOrder[0]);
+    expect(mockCheckout.mock.invocationCallOrder[0]).toBeLessThan(mockMerge.mock.invocationCallOrder[0]);
+    expect(mockMerge.mock.invocationCallOrder[0]).toBeLessThan(mockMerge.mock.invocationCallOrder[1]);
+    expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({ branch: 'main' }));
+    expect(editMode.finishEdit).toHaveBeenCalledOnce();
   });
 });
 
 describe('git.service — Status', () => {
   beforeEach(() => {
     resetGitRepo();
-    vi.spyOn(repoModule, 'openGitDb').mockResolvedValue({} as IDBDatabase);
   });
 
   afterEach(() => {

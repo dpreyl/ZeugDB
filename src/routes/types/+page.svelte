@@ -1,11 +1,14 @@
 <script lang="ts">
   import { getTypesStore } from '$lib/stores/types.store.svelte';
+  import { getComponentsStore } from '$lib/stores/components.store.svelte';
   import type { TypeDefinition } from '$lib/parser/types';
+  import type { ComponentDefinition } from '$lib/parser/types';
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
   import { persistStore } from '$lib/services/init';
   import TypeEditor from '$lib/components/TypeEditor.svelte';
 
   const store = getTypesStore();
+  const components = getComponentsStore();
   const editMode = getEditMode();
   let showForm = $state(false);
   let selectedId = $state<string | null>(null);
@@ -29,9 +32,10 @@
     selectedId = type.id;
   }
 
-  function handleSave(type: TypeDefinition) {
+  function handleSave(type: TypeDefinition, definitions: ComponentDefinition[]) {
     if (!editMode.isEditing) return;
     store.add(type);
+    for (const component of definitions) components.add(component);
     persistStore();
     resetForm();
   }
@@ -69,6 +73,7 @@
       <TypeEditor
         type={editingId ? store.findById(editingId) ?? null : null}
         existingTypes={store.all}
+        existingComponents={components.all}
         onSave={handleSave}
         onCancel={resetForm}
       />

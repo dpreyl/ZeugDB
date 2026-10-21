@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import type { Coord } from '$lib/parser/types';
   import type { Map as LeafletMap } from 'leaflet';
+  import { getLastMapView, saveLastMapView } from './map-view';
   import 'leaflet/dist/leaflet.css';
 
   type Props = {
@@ -21,6 +22,18 @@
     if (center) mapCenter = { lat: center.lat, lon: center.lng };
   }
 
+  function saveMapView() {
+    const center = map?.getCenter();
+    const zoom = map?.getZoom();
+    if (!center || zoom === undefined) return;
+
+    mapCenter = { lat: center.lat, lon: center.lng };
+    saveLastMapView({
+      center: mapCenter,
+      zoom
+    });
+  }
+
   function selectCenter() {
     onSelect({ ...mapCenter });
   }
@@ -30,18 +43,19 @@
     void import('leaflet').then((module) => {
       if (disposed) return;
       const L = (module as unknown as { default: typeof import('leaflet') }).default;
-      const start = coordinate ?? DEFAULT_CENTER;
+      const lastView = getLastMapView();
+      const start = coordinate ?? lastView?.center ?? DEFAULT_CENTER;
       mapCenter = start;
       map = L.map(container).setView(
         [start.lat, start.lon],
-        coordinate ? 17 : 13
+        coordinate ? 17 : lastView?.zoom ?? 13
       );
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         crossOrigin: 'anonymous',
         attribution: '© OpenStreetMap contributors'
       }).addTo(map);
-      map.on('moveend', updateCenter);
+      map.on('moveend', saveMapView);
       updateCenter();
       isReady = true;
     });

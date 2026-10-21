@@ -117,7 +117,7 @@ export function buildTypeDefinition(
     nr,
     name: field.name.trim(),
     art: field.art,
-    optionen: field.art === 'dropdown' || field.art === 'auswahl'
+    optionen: field.art === 'dropdown' || field.art === 'auswahl' || field.art === 'asset_ref'
       ? field.optionen.map(option => option.trim()).join('|')
       : null,
     pflicht: field.pflicht,

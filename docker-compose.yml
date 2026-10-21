@@ -63,6 +63,8 @@ services:
       - GITEA__service__REGISTER_EMAIL_CONFIRM=false
       - GITEA__service__ENABLE_CAPTCHA=false
       - GITEA__server__LFS_START_SERVER=true
+      # Gitea smart HTTP uses this repository-specific CORS setting.
+      - GITEA__repository__ACCESS_CONTROL_ALLOW_ORIGIN=${GITEA_CORS_ALLOW_DOMAIN:-*}
       - GITEA__log__MODE=console
       - GITEA__log__LEVEL=info
     healthcheck:
@@ -78,12 +80,14 @@ services:
     volumes:
       - gitea_data:/data
       - ./gitea/init.sh:/init.sh
+      - ./gitea/repo-template:/repo-template:ro
     entrypoint: ["/bin/sh", "/init.sh"]
     environment:
       - GITEA_ADMIN_USERNAME=admin
       - GITEA_ADMIN_PASSWORD=admin123
       - GITEA_ADMIN_EMAIL=admin@zeugdb.local
       - GITEA_REPO_NAME=ZeugDB
+      - GITEA_TEMPLATE_DIR=/repo-template
     depends_on:
       gitserver:
         condition: service_healthy

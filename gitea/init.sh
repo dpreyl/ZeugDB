@@ -1,14 +1,14 @@
 #!/bin/sh
-set -e
+set -eu
 
-GIT_SERVER="http://gitserver:3000"
+GIT_SERVER="${GITEA_BASE_URL:-http://gitserver:3000}"
 ADMIN_USER="${GITEA_ADMIN_USERNAME:-admin}"
 ADMIN_PASS="${GITEA_ADMIN_PASSWORD:-admin123}"
 ADMIN_EMAIL="${GITEA_ADMIN_EMAIL:-admin@zeugdb.local}"
 REPO_NAME="${GITEA_REPO_NAME:-ZeugDB}"
+TEMPLATE_DIR="${GITEA_TEMPLATE_DIR:-/repo-template}"
 
 echo "⏳ Waiting for Gitea to be ready..."
-# Poll until Gitea responds
 for i in $(seq 1 60); do
   if curl -sf "$GIT_SERVER/api/v1/version" > /dev/null 2>&1; then
     echo "✅ Gitea is ready"
@@ -21,50 +21,50 @@ for i in $(seq 1 60); do
   sleep 2
 done
 
-# Check if admin user already exists
-EXISTING=$(curl -sf "$GIT_SERVER/api/v1/users/$ADMIN_USER" 2>/dev/null || echo "")
-TOKEN=""
-if [ -z "$EXISTING" ]; then
+if ! curl -sf "$GIT_SERVER/api/v1/users/$ADMIN_USER" > /dev/null 2>&1; then
   echo "👤 Creating admin user '$ADMIN_USER'..."
-  CREATE_OUTPUT=$(su-exec git gitea admin user create \
+  su-exec git gitea admin user create \
     --username "$ADMIN_USER" \
     --password "$ADMIN_PASS" \
     --email "$ADMIN_EMAIL" \
     --admin \
-    --must-change-password=false \
-    --access-token \
-    --access-token-name "zeugdb-init" \
-    --access-token-scopes "all")
-  echo "$CREATE_OUTPUT"
-  # Extract token: "Access token was successfully created: <hash>"
-  TOKEN=$(echo "$CREATE_OUTPUT" | grep -o '[a-f0-9]\{40\}')
+    --must-change-password=false
 else
   echo "ℹ️  Admin user '$ADMIN_USER' already exists"
-  # Generate token for existing user
-  TOKEN_OUTPUT=$(su-exec git gitea admin user generate-access-token \
-    --username "$ADMIN_USER" \
-    --scopes "all" 2>/dev/null || echo "")
-  TOKEN=$(echo "$TOKEN_OUTPUT" | grep -o '[a-f0-9]\{40\}')
-fi
-if [ -n "$TOKEN" ]; then
-  echo "🔑 Access token: $TOKEN"
-else
-  echo "⚠️  Could not extract access token"
 fi
 
-# Check if repo already exists
-REPO_CHECK=$(curl -sf "$GIT_SERVER/api/v1/repos/$ADMIN_USER/$REPO_NAME" 2>/dev/null || echo "")
-if [ -z "$REPO_CHECK" ]; then
+REPO_URL="$GIT_SERVER/api/v1/repos/$ADMIN_USER/$REPO_NAME"
+if ! curl -sf -u "$ADMIN_USER:$ADMIN_PASS" "$REPO_URL" > /dev/null 2>&1; then
   echo "📦 Creating repository '$ADMIN_USER/$REPO_NAME'..."
-  PAYLOAD='{"name":"'"$REPO_NAME"'","auto_init":true,"gitignore":"Node"}'
-  curl -s -X POST "$GIT_SERVER/api/v1/user/repos" \
-    -H "Authorization: token $TOKEN" \
+  PAYLOAD="{\"name\":\"$REPO_NAME\",\"auto_init\":true,\"default_branch\":\"main\"}"
+  curl -fsS -u "$ADMIN_USER:$ADMIN_PASS" -X POST "$GIT_SERVER/api/v1/user/repos" \
     -H "Content-Type: application/json" \
-    -d "$PAYLOAD"
-  echo ""
+    -d "$PAYLOAD" > /dev/null
   echo "✅ Repository created"
 else
   echo "ℹ️  Repository '$ADMIN_USER/$REPO_NAME' already exists"
 fi
+
+if [ ! -d "$TEMPLATE_DIR" ]; then
+  echo "❌ Repository template directory not found: $TEMPLATE_DIR"
+  exit 1
+fi
+
+echo "🗂️  Preparing the app repository structure..."
+find "$TEMPLATE_DIR" -type f -print | sort | while IFS= read -r TEMPLATE_FILE; do
+  REPO_PATH="${TEMPLATE_FILE#"$TEMPLATE_DIR"/}"
+  CONTENT_URL="$REPO_URL/contents/$REPO_PATH"
+  if curl -fsS -u "$ADMIN_USER:$ADMIN_PASS" "$CONTENT_URL" > /dev/null 2>&1; then
+    echo "ℹ️  Keeping existing $REPO_PATH"
+    continue
+  fi
+
+  CONTENT=$(base64 < "$TEMPLATE_FILE" | tr -d '\r\n')
+  PAYLOAD="{\"message\":\"Initialize ZeugDB repository layout\",\"content\":\"$CONTENT\"}"
+  curl -fsS -u "$ADMIN_USER:$ADMIN_PASS" -X PUT "$CONTENT_URL" \
+    -H "Content-Type: application/json" \
+    -d "$PAYLOAD" > /dev/null
+  echo "✅ Added $REPO_PATH"
+done
 
 echo "🎉 Gitea initialization complete"

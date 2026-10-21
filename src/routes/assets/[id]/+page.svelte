@@ -4,25 +4,43 @@
   import { getAssetStore } from '$lib/stores/assets.store.svelte';
   import { getLocationsStore } from '$lib/stores/locations.store.svelte';
   import { getTypesStore } from '$lib/stores/types.store.svelte';
+  import { getComponentsStore } from '$lib/stores/components.store.svelte';
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
   import AssetTypeFields from '$lib/components/AssetTypeFields.svelte';
+  import AssetBlocks from '$lib/components/AssetBlocks.svelte';
   import { resolveAssetTypeFields } from '$lib/components/asset-type-fields';
+  import { resolveAssetTypeBlocks, type AssetBlockValues } from '$lib/components/asset-blocks.helpers';
   import { persistStore } from '$lib/services/init';
 
   let { data }: { data: PageData } = $props();
   let saved = $state(false);
   let deleted = $state(false);
   let fieldValues = $state<Record<string, string>>({});
+  let blockValues = $state<AssetBlockValues>({});
 
+  const assets = getAssetStore();
+  const components = getComponentsStore();
   const locations = getLocationsStore();
   const types = getTypesStore();
   const editMode = getEditMode();
   const typeFields = $derived(resolveAssetTypeFields(data.type, types.all));
+  const typeBlocks = $derived(resolveAssetTypeBlocks(data.type, types.all));
+  const assetOptions = $derived(assets.all.map(asset => {
+    const assetType = types.all.find(item => item.id === asset.type);
+    const fields = assets.getFields(asset.id);
+    const details = [fields.hersteller, fields.modell].filter(Boolean).join(' ');
+    return {
+      id: asset.id,
+      type: asset.type,
+      label: [assetType?.name ?? asset.type, details, asset.id].filter(Boolean).join(' · ')
+    };
+  }));
 
   $effect(() => {
     fieldValues = Object.fromEntries(
       typeFields.map(field => [field.name, String(data[field.name] ?? '')])
     );
+    blockValues = data.blocks ?? {};
   });
 
   function updateField(name: string, value: string) {
@@ -37,8 +55,11 @@
     for (const [key, value] of fd.entries()) {
       if (key !== 'type' && key !== 'location') fields[key] = value as string;
     }
-    const store = getAssetStore();
-    store.updateAsset(data.id, { fields, location: String(fd.get('location') ?? '') || null });
+    assets.updateAsset(data.id, {
+      fields,
+      blocks: blockValues,
+      location: String(fd.get('location') ?? '') || null
+    });
     persistStore();
     saved = true;
     setTimeout(() => saved = false, 2000);
@@ -92,7 +113,25 @@
           {/if}
         </div>
       </dl>
-      <AssetTypeFields fields={typeFields} values={fieldValues} editable={false} onValueChange={updateField} />
+      <AssetTypeFields
+        fields={typeFields}
+        values={fieldValues}
+        editable={false}
+        assets={assetOptions}
+        types={types.all}
+        excludedAssetId={data.id}
+        onValueChange={updateField}
+      />
+      <AssetBlocks
+        definitions={typeBlocks}
+        components={components.all}
+        values={blockValues}
+        assets={assetOptions}
+        types={types.all}
+        editable={false}
+        excludedAssetId={data.id}
+        onValueChange={(values) => blockValues = values}
+      />
     {:else}
       <fieldset class="m-0 min-w-0 space-y-4 border-0 p-0">
         <div>
@@ -101,7 +140,25 @@
           <p class="mt-1 text-xs text-gray-500">Der Asset-Typ kann nach dem Anlegen nicht geändert werden.</p>
         </div>
 
-        <AssetTypeFields fields={typeFields} values={fieldValues} editable={true} onValueChange={updateField} />
+        <AssetTypeFields
+          fields={typeFields}
+          values={fieldValues}
+          editable={true}
+          assets={assetOptions}
+          types={types.all}
+          excludedAssetId={data.id}
+          onValueChange={updateField}
+        />
+        <AssetBlocks
+          definitions={typeBlocks}
+          components={components.all}
+          values={blockValues}
+          assets={assetOptions}
+          types={types.all}
+          editable={true}
+          excludedAssetId={data.id}
+          onValueChange={(values) => blockValues = values}
+        />
 
         <div>
           <label for="location" class="block text-sm font-medium text-gray-700 mb-1">Standort</label>

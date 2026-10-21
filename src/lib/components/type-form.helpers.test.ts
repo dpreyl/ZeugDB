@@ -51,6 +51,26 @@ describe('type form helpers', () => {
     });
   });
 
+  it('stores asset reference constraints as pipe-separated compatible type ids', () => {
+    const result = buildTypeDefinition({
+      id: null,
+      name: 'Adapter',
+      extendsId: '',
+      kategorie: '',
+      icon: '',
+      fields: [{
+        name: 'Zielgerät',
+        art: 'asset_ref',
+        optionen: ['projektor', 'monitor'],
+        pflicht: false,
+        sensitiv: false
+      }],
+      blocks: []
+    }, []);
+
+    expect(result.type?.fields[0].optionen).toBe('projektor|monitor');
+  });
+
   it('preserves an existing id and allows editing that type', () => {
     const current = {
       id: 'old-id',

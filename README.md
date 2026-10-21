@@ -41,7 +41,10 @@ ansehen** die Feld- und Blockdefinitionen, bei Standorten die Identität, Art
 und Koordinaten. Verwaltungsaktionen sind ausgeblendet. Zum Bearbeiten zuerst
 oben in der App **Bearbeiten** aktivieren und anschließend bei Standorten oder
 Typen den jeweiligen Bearbeiten-Schalter verwenden; Änderungen erfolgen im
-Edit-Branch und werden erst mit **Sync** ins Git-Repository übertragen.
+Edit-Branch und werden erst mit **Sync** ins Git-Repository übertragen. Beim
+Neuladen wird eine aktive Edit-Sitzung im selben Tab fortgesetzt. Erst nach
+**Sync** oder **Verwerfen** kehrt die App in den Read-Only-Modus auf `main`
+zurück. Ein neu gestarteter Edit-Modus erhält weiterhin einen eigenen Branch.
 
 ## Typen verwalten
 
@@ -55,6 +58,13 @@ Anlegen automatisch aus dem Namen erzeugt. Die Felddefinitionen eines Typs
 bestimmen die Eingabefelder beim Anlegen und Bearbeiten der zugehörigen Assets;
 geerbte Felder werden ebenfalls angezeigt. Werte benutzerdefinierter Felder
 werden in der `.asset`-Datei gespeichert.
+
+Wiederholbare Bausteine wie Anschlüsse werden einschließlich ihrer Felder im
+Typeditor definiert und als `.comp`-Dateien gespeichert. Die Feldwerte eines
+Assets erscheinen beim Anlegen und Bearbeiten als wiederholbare Gruppen und
+werden in der `.asset`-Datei abgelegt. Der Feldtyp **Asset-Referenz** zeigt
+Assets der angegebenen kompatiblen Typen einschließlich ihrer Untertypen zur
+Auswahl an; ohne Typ-Einschränkung stehen alle Assets zur Verfügung.
 ## Entwicklung
 
 ### Setup
@@ -65,6 +75,49 @@ docker compose up
 ```
 
 Die App ist unter `http://localhost:3000` erreichbar. Gitea auf `http://localhost:8929`.
+
+### Lokales Asset-Repository
+
+Beim Start legt der Service `gitea-init` in Gitea automatisch das öffentliche
+Repository `admin/ZeugDB` an und befüllt es mit der minimal nötigen Struktur.
+Falls Gitea bereits läuft, lässt sich die idempotente Initialisierung erneut
+ausführen:
+
+```bash
+docker compose up -d gitserver
+docker compose run --rm gitea-init
+```
+
+Öffne anschließend in der App **Einstellungen**. Die Repository-URL wird
+standardmäßig aus dem Hostnamen der App gebildet:
+`http://<hostname>:8929/admin/ZeugDB`. Bei `http://localhost:3000` ist das
+`http://localhost:8929/admin/ZeugDB`. Verwende einen Gitea-Benutzernamen und
+einen persönlichen Zugriffstoken mit Repository-Lese-/Schreibrechten und
+wähle **Klonen**. Danach können Assets, Typen und Standorte lokal bearbeitet
+und über **Sync** ins Repository übertragen werden.
+
+Die benötigte Repo-Struktur und Dateiformate sind in
+[`gitea/repo-template/REPO_SETUP.md`](gitea/repo-template/REPO_SETUP.md)
+dokumentiert. Minimale Repos benötigen die Verzeichnisse `assets/`, `types/`
+und `locations/`; die enthaltenen README-Dateien halten diese Verzeichnisse
+beim Anlegen des Repos verfügbar. Die Beispiel-`.type`-Dateien zeigen das
+Format für Typdefinitionen. Die App erzeugt Asset- und Standortdateien selbst.
+
+Die in Docker Compose voreingestellten Zugangsdaten sind ausschließlich für
+die lokale Entwicklungsumgebung gedacht und dürfen nicht für öffentlich
+erreichbare Gitea-Instanzen verwendet werden. Zugangstoken gehören nur in die
+App-Einstellungen, niemals in Git-Dateien.
+
+Gitea erlaubt im lokalen Compose-Setup Browserzugriffe auf Git Smart HTTP von
+anderen Origins, damit die statische App Git über HTTP(S) verwenden kann. Dafür
+setzt Compose Giteas repository-spezifische `ACCESS_CONTROL_ALLOW_ORIGIN`-Regel;
+die allgemeine `[cors]`-Konfiguration allein reicht für Git-Zugriffe nicht aus.
+Standardmäßig ist die Origin-Regel offen (`*`). Die App authentifiziert
+Git-Zugriffe mit einem persönlichen Token statt mit Cookies. Für erreichbare
+Installationen sollte `GITEA_CORS_ALLOW_DOMAIN` auf genau die vertrauenswürdige
+App-Origin beschränkt werden (z. B. `https://inventar.example.org`) und Gitea
+anschließend neu erstellt werden:
+`docker compose up -d --force-recreate gitserver`.
 
 ### Tests & Build
 
@@ -111,11 +164,15 @@ serviert ausschließlich statische Dateien — kein Node.js, kein Backend.
 Flächen und Routen verwenden Arrays aus `{ lat, lon }`-Punkten in `polygon`
 bzw. `route`. Die Daten werden als `.location`-Dateien im Git-Repository
 gespeichert. Einzelne Asset-Standorte werden dort als Punkt angelegt und dem
-Asset über das Standortfeld zugewiesen. OpenStreetMap-Kacheln benötigen eine
-Verbindung beim ersten Aufruf. Der Service Worker speichert nur tatsächlich
-angeforderte Kacheln, beachtet deren HTTP-Cache-Fristen und begrenzt den Cache
-auf 1.200 Einträge. Nicht zuvor geladene Kartenausschnitte stehen offline nicht
-als Hintergrundkarte zur Verfügung.
+Asset über das Standortfeld zugewiesen. Die zuletzt angezeigte Kartenposition
+wird lokal gespeichert und beim nächsten Öffnen wiederhergestellt. Der
+Koordinaten-Picker verwendet diesen Ausschnitt auch für den nächsten neu zu
+setzenden Punkt, statt wieder mit der Standardansicht zu starten.
+OpenStreetMap-Kacheln benötigen eine Verbindung beim ersten Aufruf. Der Service
+Worker speichert nur tatsächlich angeforderte Kacheln, beachtet deren
+HTTP-Cache-Fristen und begrenzt den Cache auf 1.200 Einträge. Nicht zuvor
+geladene Kartenausschnitte stehen offline nicht als Hintergrundkarte zur
+Verfügung.
 
 ### Statische Dateien verteilen (z. B. GitHub Pages)
 

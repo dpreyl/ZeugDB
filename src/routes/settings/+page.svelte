@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import {
     loadGitConfig,
     saveGitConfig,
@@ -10,11 +11,12 @@
     commitChanges,
     type GitConfig
   } from '$lib/services/git.service';
+  import { getDefaultGitConfigUrl } from '$lib/services/git-defaults';
 
   const savedConfig = loadGitConfig();
-  let gitUrl = $state(savedConfig?.url ?? 'http://192.168.178.21:8929/dpreyl/ZeugDB');
+  let gitUrl = $state(savedConfig?.url ?? getDefaultGitConfigUrl());
   let token = $state(savedConfig?.token ?? '');
-  let username = $state(savedConfig?.username ?? '');
+  let username = $state(savedConfig?.username ?? 'admin');
 
   let saved = $state(false);
   let loading = $state(false);
@@ -27,14 +29,14 @@
     hasChanges: boolean;
   } | null>(null);
 
-  // Lade initial den Sync-Status
-  (async () => {
-    try {
-      status = await getSyncStatus();
-    } catch {
-      // ignorieren
-    }
-  })();
+  // LightningFS/IndexedDB sind browsergebunden und dürfen nicht beim SSR starten.
+  onMount(() => {
+    getSyncStatus().then((nextStatus) => {
+      status = nextStatus;
+    }).catch(() => {
+      // Der Status bleibt unbekannt, bis die Browser-Datenbank verfügbar ist.
+    });
+  });
 
   function handleSave() {
     const config: GitConfig = {

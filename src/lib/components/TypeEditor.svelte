@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { BlockDef, TypeDefinition } from '$lib/parser/types';
+  import type { BlockDef, ComponentDefinition, FieldType, TypeDefinition } from '$lib/parser/types';
   import {
     buildTypeDefinition,
     createTypeDraft,
@@ -10,17 +10,19 @@
   type Props = {
     type: TypeDefinition | null;
     existingTypes: TypeDefinition[];
-    onSave: (type: TypeDefinition) => void;
+    existingComponents?: ComponentDefinition[];
+    onSave: (type: TypeDefinition, components: ComponentDefinition[]) => void;
     onCancel: () => void;
   };
 
-  let { type, existingTypes, onSave, onCancel }: Props = $props();
+  type BlockDraft = BlockDef & { name: string; fields: TypeFieldDraft[] };
+  let { type, existingTypes, existingComponents = [], onSave, onCancel }: Props = $props();
   let formName = $state('');
   let formExtends = $state('');
   let formKategorie = $state('');
   let formIcon = $state('');
   let fields = $state<TypeFieldDraft[]>([]);
-  let blocks = $state<BlockDef[]>([]);
+  let blocks = $state<BlockDraft[]>([]);
   let errors = $state<string[]>([]);
 
   $effect(() => {
@@ -30,7 +32,14 @@
     formKategorie = initialDraft.kategorie;
     formIcon = initialDraft.icon;
     fields = initialDraft.fields;
-    blocks = initialDraft.blocks;
+    blocks = initialDraft.blocks.map(block => {
+      const component = existingComponents.find(item => item.id === block.compId);
+      return {
+        ...block,
+        name: component?.name ?? block.compId,
+        fields: component?.fields.map(fieldToDraft) ?? []
+      };
+    });
     errors = [];
   });
 
@@ -50,10 +59,11 @@
   }
 
   function addBlock() {
-    blocks.push({ compId: '', min: 0, max: 1 });
+    blocks.push({ compId: '', name: '', min: 0, max: 1, fields: [] });
   }
 
   function save() {
+    const componentErrors = validateComponentDrafts(blocks);
     const result = buildTypeDefinition({
       id: type?.id ?? null,
       name: formName,
@@ -61,10 +71,57 @@
       kategorie: formKategorie,
       icon: formIcon,
       fields,
-      blocks
+      blocks: blocks.map(({ compId, min, max }) => ({ compId, min, max }))
     }, existingTypes);
-    errors = result.errors;
-    if (result.type) onSave(result.type);
+    errors = [...result.errors, ...componentErrors];
+    if (result.type && errors.length === 0) {
+      onSave(result.type, blocks.map(block => ({
+        id: block.compId.trim(),
+        name: block.name.trim() || block.compId.trim(),
+        fields: block.fields.map((field, nr) => fieldToDefinition(field, nr))
+      })));
+    }
+  }
+
+  function addComponentField(block: BlockDraft) {
+    block.fields.push({ name: '', art: 'text', optionen: [], pflicht: false, sensitiv: false });
+  }
+
+  function fieldToDraft(field: FieldType): TypeFieldDraft {
+    return {
+      name: field.name,
+      art: field.art,
+      optionen: field.optionen
+        ? field.optionen.split(field.optionen.includes('|') ? '|' : ',').map(option => option.trim()).filter(Boolean)
+        : [],
+      pflicht: field.pflicht,
+      sensitiv: field.sensitiv
+    };
+  }
+
+  function fieldToDefinition(field: TypeFieldDraft, nr: number): FieldType {
+    return {
+      nr,
+      name: field.name.trim(),
+      art: field.art,
+      optionen: field.art === 'dropdown' || field.art === 'auswahl' || field.art === 'asset_ref'
+        ? field.optionen.map(option => option.trim()).join('|') || null
+        : null,
+      pflicht: field.pflicht,
+      sensitiv: field.sensitiv
+    };
+  }
+
+  function validateComponentDrafts(drafts: BlockDraft[]): string[] {
+    const errors: string[] = [];
+    for (const block of drafts) {
+      const names = block.fields.map(field => field.name.trim().toLocaleLowerCase());
+      if (names.some(name => !name)) errors.push(`Bitte gib für jedes Feld im Baustein ${block.compId || 'ohne ID'} einen Namen ein.`);
+      if (new Set(names.filter(Boolean)).size !== names.filter(Boolean).length) {
+        errors.push(`Feldnamen im Baustein ${block.compId || 'ohne ID'} müssen eindeutig sein.`);
+      }
+    }
+    return errors;
   }
 </script>
 
@@ -173,10 +230,10 @@
           </button>
         </div>
 
-        {#if field.art === 'dropdown' || field.art === 'auswahl'}
+        {#if field.art === 'dropdown' || field.art === 'auswahl' || field.art === 'asset_ref'}
           <div class="space-y-2 rounded-md bg-gray-50 p-3">
             <div class="flex items-center justify-between gap-3">
-              <span class="text-sm font-medium text-gray-700">Auswahlwerte</span>
+              <span class="text-sm font-medium text-gray-700">{field.art === 'asset_ref' ? 'Kompatible Asset-Typ-IDs' : 'Auswahlwerte'}</span>
               <button
                 type="button"
                 onclick={() => field.optionen.push('')}
@@ -228,7 +285,7 @@
     <div class="flex items-center justify-between gap-3">
       <div>
         <h4 id="blocks-heading" class="font-medium text-gray-900">Bausteine</h4>
-        <p class="text-xs text-gray-500">Wiederholbare Gruppen wie Anschlüsse oder Ports.</p>
+        <p class="text-xs text-gray-500">Wiederholbare Gruppen wie Anschlüsse oder Ports, mit eigenen Feldern.</p>
       </div>
       <button type="button" onclick={addBlock} class="rounded-md border border-blue-200 px-3 py-2 text-sm text-blue-700 hover:bg-blue-50">
         + Baustein hinzufügen
@@ -236,28 +293,71 @@
     </div>
 
     {#each blocks as block, index (index)}
-      <fieldset class="grid gap-3 rounded-md border border-gray-200 p-3 sm:grid-cols-[1fr_8rem_8rem_auto]">
+      <fieldset class="space-y-4 rounded-md border border-gray-200 p-3">
         <legend class="sr-only">Baustein {index + 1}</legend>
-        <label class="block text-sm font-medium text-gray-700">
-          Baustein-ID
-          <input
-            bind:value={block.compId}
-            maxlength="80"
-            placeholder="z. B. port"
-            class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-          />
-        </label>
-        <label class="block text-sm font-medium text-gray-700">
-          Minimum
-          <input type="number" min="0" step="1" bind:value={block.min} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
-        </label>
-        <label class="block text-sm font-medium text-gray-700">
-          Maximum
-          <input type="number" min="0" step="1" bind:value={block.max} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
-        </label>
-        <button type="button" onclick={() => blocks.splice(index, 1)} class="self-end rounded-md px-3 py-2 text-sm text-red-700 hover:bg-red-50">
-          Entfernen
-        </button>
+        <div class="grid gap-3 sm:grid-cols-[1fr_1fr_8rem_8rem_auto]">
+          <label class="block text-sm font-medium text-gray-700">
+            Baustein-ID
+            <input bind:value={block.compId} maxlength="80" placeholder="z. B. port" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          <label class="block text-sm font-medium text-gray-700">
+            Anzeigename
+            <input bind:value={block.name} maxlength="80" placeholder="z. B. Port" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          <label class="block text-sm font-medium text-gray-700">
+            Minimum
+            <input type="number" min="0" step="1" bind:value={block.min} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          <label class="block text-sm font-medium text-gray-700">
+            Maximum
+            <input type="number" min="0" step="1" bind:value={block.max} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          <button type="button" onclick={() => blocks.splice(index, 1)} class="self-end rounded-md px-3 py-2 text-sm text-red-700 hover:bg-red-50">
+            Entfernen
+          </button>
+        </div>
+
+        <div class="space-y-2 border-t border-gray-100 pt-3">
+          <div class="flex items-center justify-between gap-3">
+            <h5 class="text-sm font-medium text-gray-800">Felder für {block.name || block.compId || 'Baustein'}</h5>
+            <button type="button" onclick={() => addComponentField(block)} class="text-sm text-blue-700 hover:underline">
+              + Komponentenfeld
+            </button>
+          </div>
+          {#each block.fields as field, fieldIndex (fieldIndex)}
+            <fieldset class="grid gap-3 rounded-md bg-gray-50 p-3 sm:grid-cols-[1fr_1fr_auto]">
+              <legend class="sr-only">Komponentenfeld {fieldIndex + 1}</legend>
+              <label class="block text-sm font-medium text-gray-700">
+                Feldname
+                <input bind:value={field.name} aria-label="Komponentenfeldname" maxlength="80" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+              </label>
+              <label class="block text-sm font-medium text-gray-700">
+                Eingabetyp
+                <select bind:value={field.art} aria-label="Komponenten-Eingabetyp" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                  {#each fieldTypes as option (option.value)}
+                    <option value={option.value}>{option.label}</option>
+                  {/each}
+                </select>
+              </label>
+              <button type="button" onclick={() => block.fields.splice(fieldIndex, 1)} class="self-end rounded-md px-3 py-2 text-sm text-red-700">
+                Entfernen
+              </button>
+              {#if field.art === 'asset_ref'}
+                <div class="space-y-2 sm:col-span-2">
+                  <p class="text-sm text-gray-700">Kompatible Asset-Typ-IDs</p>
+                  {#each field.optionen as option, optionIndex (optionIndex)}
+                    <input bind:value={field.optionen[optionIndex]} aria-label="Komponenten-Asset-Typ" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+                  {/each}
+                  <button type="button" onclick={() => field.optionen.push('')} class="mt-1 text-xs text-blue-700">+ Typ-ID</button>
+                </div>
+              {/if}
+              <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" bind:checked={field.pflicht} />
+                Pflichtfeld
+              </label>
+            </fieldset>
+          {/each}
+        </div>
       </fieldset>
     {/each}
   </section>
