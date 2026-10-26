@@ -8,6 +8,7 @@ import {
 } from '../static/tile-cache.js';
 import { appPath, getAppBase } from '../static/sw-paths.js';
 import { getBuildAssetUrls, getPrecacheUrls } from '../static/sw-precache.js';
+import { isSameOriginRequest } from '../static/sw-request.js';
 import { serveNavigation } from '../static/sw-navigation.js';
 
 /* ZeugDB service worker: precache all SvelteKit route bundles for offline navigation. */
@@ -48,6 +49,11 @@ self.addEventListener('fetch', event => {
     event.respondWith(serveMapTile(request));
     return;
   }
+
+  // Never apply this app's offline-shell fallback to cross-origin Git/LFS/API
+  // requests. A failed localhost request from a hosted Pages app must remain a
+  // network error, not become the cached GitHub Pages HTML document.
+  if (!isSameOriginRequest(request.url, self.location.origin)) return;
 
   if (request.mode === 'navigate' ||
       (request.method === 'GET' && request.headers.get('accept')?.includes('text/html'))) {

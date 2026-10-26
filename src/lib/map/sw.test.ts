@@ -10,6 +10,8 @@ import { appPath, getAppBase } from '../../../static/sw-paths.js';
 import { serveNavigation } from '../../../static/sw-navigation.js';
 // @ts-expect-error Worker helpers are static browser modules without TypeScript declarations.
 import { getBuildAssetUrls, getPrecacheUrls } from '../../../static/sw-precache.js';
+// @ts-expect-error Worker helpers are static browser modules without TypeScript declarations.
+import { isSameOriginRequest } from '../../../static/sw-request.js';
 
 const tileUrl = 'https://tile.openstreetmap.org/12/2048/1365.png';
 
@@ -49,6 +51,7 @@ function createWorker(
     addEventListener: (name: string, listener: (event: any) => void) =>
       listeners.set(name, listener),
     registration: { scope: 'https://example.test/' },
+    location: { origin: 'https://example.test' },
     skipWaiting: vi.fn(),
     clients: { claim: vi.fn() },
   };
@@ -57,6 +60,7 @@ function createWorker(
     .replace(/^import \{[\s\S]*?\} from '\.\.\/static\/tile-cache\.js';/m, '')
     .replace(/^import \{[\s\S]*?\} from '\.\.\/static\/sw-paths\.js';/m, '')
     .replace(/^import \{[\s\S]*?\} from '\.\.\/static\/sw-precache\.js';/m, '')
+    .replace(/^import \{[\s\S]*?\} from '\.\.\/static\/sw-request\.js';/m, '')
     .replace(/^import \{[\s\S]*?\} from '\.\.\/static\/sw-navigation\.js';/m, '');
 
   runInNewContext(source, {
@@ -68,6 +72,7 @@ function createWorker(
     getAppBase,
     getPrecacheUrls,
     getBuildAssetUrls,
+    isSameOriginRequest,
     serveNavigation: (request: Request, cache: Cache, appRoot: string) =>
       serveNavigation(request, cache, appRoot, fetch),
     caches,
@@ -182,6 +187,19 @@ describe('Service Worker tile cache', () => {
     } as Request).responsePromise;
 
     expect(worker.tileCache.put).not.toHaveBeenCalled();
+  });
+
+  it('does not intercept cross-origin Git requests or replace them with the app shell', () => {
+    const worker = createWorker(new Response('app'));
+    const result = worker.dispatchFetch({
+      url: 'http://localhost:8929/admin/ZeugDB/info/refs?service=git-upload-pack',
+      method: 'GET',
+      mode: 'cors',
+      headers: { get: () => 'application/x-git-upload-pack-advertisement' },
+    } as unknown as Request);
+
+    expect(result.responsePromise).toBeUndefined();
+    expect(worker.fetch).not.toHaveBeenCalled();
   });
 });
 
