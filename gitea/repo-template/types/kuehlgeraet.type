@@ -1,0 +1,6 @@
+extends: elektrogeraet
+name: Kühl- / Gefriergerät
+kategorie: Gastro-Küche
+feld: Geräteart, dropdown, Kühlschrank|Tiefkühlschrank|Kühltruhe|Kühltheke, optional
+feld: Kältemittel, text, optional
+feld: Temperaturbereich, text, optional

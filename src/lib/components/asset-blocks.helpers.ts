@@ -31,12 +31,13 @@ export function createBlockValues(
 ): AssetBlockValues {
   const result: AssetBlockValues = {};
   for (const definition of definitions) {
+    const fixedFields = definition.fixedFields ?? {};
     const instances = Object.fromEntries(
       Object.entries(existing[definition.compId] ?? {})
-        .map(([index, fields]) => [index, { ...fields }])
+        .map(([index, fields]) => [index, { ...fields, ...fixedFields }])
     );
     for (let index = 0; index < definition.min; index++) {
-      instances[String(index)] ??= {};
+      instances[String(index)] = { ...fixedFields, ...instances[String(index)] };
     }
     result[definition.compId] = instances;
   }

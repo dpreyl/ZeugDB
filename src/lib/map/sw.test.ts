@@ -6,12 +6,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTileCacheLifetime, isFreshTile, isOpenStreetMapTileRequest, TILE_CACHE_LIMIT, TILE_CACHE_NAME } from '../../../static/tile-cache.js';
 // @ts-expect-error Worker helpers are static browser modules without TypeScript declarations.
 import { appPath, getAppBase } from '../../../static/sw-paths.js';
+// @ts-expect-error Worker helpers are static browser modules without TypeScript declarations.
+import { serveNavigation } from '../../../static/sw-navigation.js';
+// @ts-expect-error Worker helpers are static browser modules without TypeScript declarations.
+import { getBuildAssetUrls, getPrecacheUrls } from '../../../static/sw-precache.js';
 
 const tileUrl = 'https://tile.openstreetmap.org/12/2048/1365.png';
 
-function createWorker(response: unknown) {
+function createWorker(
+  response: unknown,
+  build = ['/_app/immutable/nodes/locations.js'],
+  files = ['manifest.json']
+) {
   const listeners = new Map<string, (event: any) => void>();
   const stored = new Map<string, unknown>();
+  const precachedUrls: string[] = [];
   const tileCache = {
     match: vi.fn(async (request: Request) => stored.get(request.url)),
     put: vi.fn(async (request: Request, value: unknown) => {
@@ -24,6 +33,9 @@ function createWorker(response: unknown) {
     match: vi.fn(async () => undefined),
     put: vi.fn(async () => undefined),
     keys: vi.fn(async () => []),
+    addAll: vi.fn(async (urls: string[]) => {
+      precachedUrls.push(...urls);
+    }),
   };
   const caches = {
     open: vi.fn(async (name: string) =>
@@ -40,14 +52,24 @@ function createWorker(response: unknown) {
     skipWaiting: vi.fn(),
     clients: { claim: vi.fn() },
   };
-  const source = readFileSync(resolve(process.cwd(), 'static/sw.js'), 'utf8')
-    .replace(/^import \{[\s\S]*?\} from '\.\/tile-cache\.js';/m, '')
-    .replace(/^import \{[\s\S]*?\} from '\.\/sw-paths\.js';/m, '');
+  const source = readFileSync(resolve(process.cwd(), 'src/service-worker.js'), 'utf8')
+    .replace(/^import \{[\s\S]*?\} from '\$service-worker';/m, '')
+    .replace(/^import \{[\s\S]*?\} from '\.\.\/static\/tile-cache\.js';/m, '')
+    .replace(/^import \{[\s\S]*?\} from '\.\.\/static\/sw-paths\.js';/m, '')
+    .replace(/^import \{[\s\S]*?\} from '\.\.\/static\/sw-precache\.js';/m, '')
+    .replace(/^import \{[\s\S]*?\} from '\.\.\/static\/sw-navigation\.js';/m, '');
 
   runInNewContext(source, {
     self,
+    build,
+    files,
+    version: 'test-version',
     appPath,
     getAppBase,
+    getPrecacheUrls,
+    getBuildAssetUrls,
+    serveNavigation: (request: Request, cache: Cache, appRoot: string) =>
+      serveNavigation(request, cache, appRoot, fetch),
     caches,
     fetch,
     URL,
@@ -66,7 +88,17 @@ function createWorker(response: unknown) {
     caches,
     appCache,
     fetch,
+    precachedUrls,
     tileCache,
+    async dispatchInstall() {
+      let installPromise: Promise<unknown> | undefined;
+      listeners.get('install')?.({
+        waitUntil: (promise: Promise<unknown>) => {
+          installPromise = Promise.resolve(promise);
+        },
+      });
+      await installPromise;
+    },
     dispatchFetch(request: Request) {
       let responsePromise: Promise<unknown> | undefined;
       const pending: Promise<unknown>[] = [];
@@ -150,5 +182,30 @@ describe('Service Worker tile cache', () => {
     } as Request).responsePromise;
 
     expect(worker.tileCache.put).not.toHaveBeenCalled();
+  });
+});
+
+describe('Service Worker offline navigation assets', () => {
+  it('precaches SvelteKit route bundles so an unvisited route can open offline', async () => {
+    const worker = createWorker(new Response('app'), [
+      '/_app/immutable/entry/start.js',
+      '/_app/immutable/nodes/locations.js',
+      '/_app/immutable/nodes/settings.js',
+    ], [
+      'manifest.json',
+      'icon-192.png',
+    ]);
+
+    await worker.dispatchInstall();
+
+    expect(worker.precachedUrls).toEqual([
+      '/',
+      '/_app/immutable/entry/start.js',
+      '/_app/immutable/nodes/locations.js',
+      '/_app/immutable/nodes/settings.js',
+      '/manifest.json',
+      '/icon-192.png',
+      '/service-worker.js'
+    ]);
   });
 });

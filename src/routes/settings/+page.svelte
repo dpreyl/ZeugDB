@@ -7,6 +7,7 @@
     initRepo,
     getSyncStatus,
     pushToRemote,
+    syncPushWithLfs,
     pullToStores,
     commitChanges,
     type GitConfig
@@ -101,14 +102,15 @@
   async function handlePush() {
     loading = true;
     error = null;
-    progress = 'Pushe...';
+    progress = 'Sync starte...';
     try {
       const config: GitConfig = { url: gitUrl, username, token };
-      await pushToRemote(config, 'main', (p) => { progress = p.message; });
-      lastResult = 'Push erfolgreich';
+      // LFS-Binaries hochladen + Git push (offline-first)
+      await syncPushWithLfs(config, 'main', (p) => { progress = p.message; });
+      lastResult = 'Sync erfolgreich — LFS-Binaries und Git-Änderungen hochgeladen';
       status = await getSyncStatus();
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Push fehlgeschlagen';
+      error = e instanceof Error ? e.message : 'Sync fehlgeschlagen';
     } finally {
       loading = false;
       progress = null;
@@ -165,8 +167,14 @@
         type="url"
         bind:value={gitUrl}
         class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-        placeholder="http://localhost:8929/user/repo"
+        placeholder="http://<LAN-IP>:8929/admin/ZeugDB"
       />
+      <p class="mt-1 text-xs text-gray-500">
+        Die App kann auf GitHub Pages liegen, die Daten bleiben in deinem Gitea-Repository.
+        Trage hier bei GitHub Pages die LAN-Adresse des Gitea-Servers ein, z. B.
+        http://192.168.1.24:8929/admin/ZeugDB. Chrome fragt beim ersten Zugriff ggf. nach
+        der Berechtigung für das lokale Netzwerk.
+      </p>
     </div>
 
     <div>

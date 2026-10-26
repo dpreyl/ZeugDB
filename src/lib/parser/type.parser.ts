@@ -5,6 +5,7 @@ import type { FieldType, BlockDef, TypeDefinition } from './types';
  */
 export function parseType(id: string, text: string): TypeDefinition {
   const type: TypeDefinition = { id, fields: [], blocks: [] };
+  const fixedFields = new Map<string, Record<string, string>>();
   let fieldNr = 0;
 
   for (const rawLine of text.split('\n')) {
@@ -49,8 +50,22 @@ export function parseType(id: string, text: string): TypeDefinition {
       type.blocks.push(block);
       continue;
     }
+
+    if (line.startsWith('block-feld:')) {
+      const [compId, fieldName, ...valueParts] = line.slice(11).split(',').map(part => part.trim());
+      const value = valueParts.join(',').trim();
+      if (compId && fieldName && value) {
+        const componentFields = fixedFields.get(compId) ?? {};
+        componentFields[fieldName] = value;
+        fixedFields.set(compId, componentFields);
+      }
+    }
   }
 
+  for (const block of type.blocks) {
+    const values = fixedFields.get(block.compId);
+    if (values) block.fixedFields = values;
+  }
   return type;
 }
 

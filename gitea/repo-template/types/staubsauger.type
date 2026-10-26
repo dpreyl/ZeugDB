@@ -1,0 +1,5 @@
+extends: elektrogeraet
+name: Staubsauger
+kategorie: Gelände/Wartung
+feld: Geräteart, dropdown, Bodenstaubsauger|Nass-Trockensauger|Rucksacksauger, optional
+feld: Filterklasse, text, optional

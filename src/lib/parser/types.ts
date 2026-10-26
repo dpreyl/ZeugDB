@@ -27,6 +27,7 @@ export type BlockDef = {
   compId: string;
   min: number;
   max: number;
+  fixedFields?: Record<string, string>;
 };
 
 export type TypeDefinition = {

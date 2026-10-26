@@ -25,6 +25,7 @@ function generateId(): string {
  */
 export class AssetStore {
   declare all: AssetRow[];
+  declare fieldsVersion: number;
   #fields: Map<string, Record<string, string>>;
   #blocks: Map<string, AssetBlockValues>;
 
@@ -32,6 +33,7 @@ export class AssetStore {
     // $state macht das Array reaktiv — Komponenten, die auf `store.all`
     // zugreifen, werden bei Mutationen neu gerendert.
     this.all = $state([]);
+    this.fieldsVersion = $state(0);
     this.#fields = new Map();
     this.#blocks = new Map();
   }
@@ -40,6 +42,7 @@ export class AssetStore {
     this.#fields.clear();
     this.#blocks.clear();
     this.all = rows;
+    this.fieldsVersion += 1;
   }
 
   add(row: AssetRow): void {
@@ -59,6 +62,7 @@ export class AssetStore {
       throw new Error(`Asset '${assetId}' nicht gefunden`);
     }
     this.#fields.set(assetId, { ...this.#fields.get(assetId), ...fields });
+    this.fieldsVersion += 1;
   }
 
   getField(assetId: string, path: string): string | undefined {
@@ -109,13 +113,15 @@ export class AssetStore {
    * Gibt die neue Asset-ID zurück.
    */
   createAsset(input: {
+    id?: string;
     type: string;
     location?: string | null;
     fields?: Record<string, string>;
     blocks?: AssetBlockValues;
   }): string {
     const now = new Date().toISOString();
-    const id = generateId();
+    const id = input.id ?? generateId();
+    if (this.findById(id)) throw new Error(`Asset '${id}' existiert bereits`);
     const row: AssetRow = {
       id,
       type: input.type,
@@ -129,6 +135,13 @@ export class AssetStore {
     }
     if (input.blocks) this.setBlocks(id, input.blocks);
     return id;
+  }
+
+  /**
+   * Reserviert eine Asset-ID, damit Upload-Pfade bereits vor dem Anlegen feststehen.
+   */
+  reserveAssetId(): string {
+    return generateId();
   }
 
   /**
@@ -156,6 +169,7 @@ export class AssetStore {
     this.all.splice(idx, 1);
     this.#fields.delete(id);
     this.#blocks.delete(id);
+    this.fieldsVersion += 1;
     return true;
   }
 
@@ -163,6 +177,7 @@ export class AssetStore {
     this.all = [];
     this.#fields.clear();
     this.#blocks.clear();
+    this.fieldsVersion += 1;
   }
 }
 

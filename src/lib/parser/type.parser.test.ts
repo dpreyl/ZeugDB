@@ -42,12 +42,39 @@ describe('parseType', () => {
     expect(parsed.fields.map(field => field.optionen)).toEqual(['hdmi-kabel|usb-c', 'projektor']);
   });
 
+  it('parst ein Bildfeld als eigenen Asset-Feldtyp', () => {
+    const parsed = parseType('kamera', 'feld: typenschild, image, pflicht');
+
+    expect(parsed.fields).toEqual([{
+      nr: 0,
+      name: 'typenschild',
+      art: 'image',
+      optionen: null,
+      pflicht: true,
+      sensitiv: false
+    }]);
+  });
+
   it('parsed Block-Definitionen', () => {
     const result = parseType('_base', baseType);
     expect(result.blocks).toEqual([
       { compId: 'stromanschluss', min: 0, max: 5 },
       { compId: 'port', min: 0, max: 50 }
     ]);
+  });
+
+  it('parst typfeste Werte für Felder einer Block-Komponente', () => {
+    const parsed = parseType('hdmi-kabel', [
+      'block: port, 2, 2',
+      'block-feld: port, anschlusstyp, HDMI'
+    ].join('\n'));
+
+    expect(parsed.blocks).toEqual([{
+      compId: 'port',
+      min: 2,
+      max: 2,
+      fixedFields: { anschlusstyp: 'HDMI' }
+    }]);
   });
 });
 

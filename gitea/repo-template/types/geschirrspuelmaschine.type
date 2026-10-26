@@ -1,0 +1,6 @@
+extends: elektrogeraet
+name: Geschirrspülmaschine
+kategorie: Gastro-Küche
+feld: Geräteart, dropdown, Haushalt|Gewerbe|Haubenspülmaschine, optional
+feld: Wasseranschluss, boolean, optional
+feld: Leistung (W), number, optional

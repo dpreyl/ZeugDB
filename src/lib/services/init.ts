@@ -12,6 +12,64 @@ const ASSETS_KEY = 'zeugdb:assets';
 const TYPES_KEY = 'zeugdb:types';
 const COMPONENTS_KEY = 'zeugdb:components';
 const LOCATIONS_KEY = 'zeugdb:locations';
+const initializedStores = new WeakSet<object>();
+const LEGACY_DEMO_TYPES: TypeDefinition[] = [
+  {
+    id: 'projektor',
+    name: 'Projektor',
+    extends: '_base',
+    kategorie: 'gerät',
+    fields: [
+      { nr: 0, name: 'hersteller', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+      { nr: 1, name: 'modell', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+      { nr: 2, name: 'seriennummer', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+      { nr: 3, name: 'inventarnummer', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+      { nr: 4, name: 'zustand', art: 'auswahl', optionen: 'neu,einwandfrei,defekt,in_reparatur,verschrottet', pflicht: true, sensitiv: false }
+    ],
+    blocks: []
+  },
+  {
+    id: 'hdmi-kabel',
+    name: 'HDMI-Kabel',
+    extends: '_base',
+    kategorie: 'kabel',
+    fields: [
+      { nr: 0, name: 'hersteller', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+      { nr: 1, name: 'modell', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+      { nr: 2, name: 'länge', art: 'text', optionen: null, pflicht: false, sensitiv: false }
+    ],
+    blocks: []
+  }
+];
+const LEGACY_DEMO_ASSETS = [
+  {
+    type: 'projektor',
+    location: 'raum-101',
+    fields: {
+      hersteller: 'Sony',
+      modell: 'VPL-FHZ50',
+      seriennummer: 'S123456789',
+      inventarnummer: 'DEV-2024-0042',
+      zustand: 'einwandfrei'
+    }
+  },
+  {
+    type: 'hdmi-kabel',
+    location: 'raum-101',
+    fields: { hersteller: 'Belkin', modell: 'AVC017htb', länge: '2m' }
+  },
+  {
+    type: 'projektor',
+    location: 'raum-102',
+    fields: {
+      hersteller: 'Epson',
+      modell: 'EB-2265U',
+      seriennummer: 'EP5678',
+      inventarnummer: 'DEV-2024-0043',
+      zustand: 'einwandfrei'
+    }
+  }
+];
 
 /**
  * Serialisiert den Asset-Store für localStorage.
@@ -89,26 +147,30 @@ function deserializeLocations(json: string): void {
 }
 
 /**
- * Läd gespeicherte Daten aus localStorage oder seedet Demo-Daten.
+ * Lädt gespeicherte Daten aus localStorage.
  * Wird beim Layout-Mount aufgerufen.
  */
 export function initializeStore(): void {
+  if (typeof window === 'undefined') return;
+
   const assetStore = getAssetStore();
   const typesStore = getTypesStore();
   const componentsStore = getComponentsStore();
   const locationsStore = getLocationsStore();
 
-  // Bereits initialisiert?
+  if (initializedStores.has(assetStore)) return;
+  initializedStores.add(assetStore);
   if (assetStore.all.length > 0) return;
 
   // Aus localStorage laden
-  const hasAssets = loadFromStorage(ASSETS_KEY, deserializeAssets);
-  const hasTypes = loadFromStorage(TYPES_KEY, deserializeTypes);
+  loadFromStorage(ASSETS_KEY, deserializeAssets);
+  loadFromStorage(TYPES_KEY, deserializeTypes);
   const hasComponents = loadFromStorage(COMPONENTS_KEY, deserializeComponents);
-  const hasLocations = loadFromStorage(LOCATIONS_KEY, deserializeLocations);
-
-  // Wenn nichts geladen wurde, Demo-Daten seeden
-  if (!hasAssets) seedDemoData();
+  loadFromStorage(LOCATIONS_KEY, deserializeLocations);
+  const removedDemoAssets = removeLegacyDemoAssets(assetStore);
+  const removedDemoTypes = removeLegacyDemoTypes(assetStore, typesStore);
+  const removedDemoLocations = removeLegacyDemoLocations(assetStore, locationsStore);
+  if (removedDemoTypes || removedDemoAssets || removedDemoLocations) persistStore();
   if (!hasComponents) componentsStore.clear();
 }
 
@@ -127,6 +189,85 @@ function loadFromStorage(key: string, deserialize: (json: string) => void): bool
     // Korrupte Daten ignorieren
   }
   return false;
+}
+
+function removeLegacyDemoTypes(
+  assets: ReturnType<typeof getAssetStore>,
+  types: ReturnType<typeof getTypesStore>
+): boolean {
+  let removed = false;
+  for (const demo of LEGACY_DEMO_TYPES) {
+    const type = types.findById(demo.id);
+    if (
+      !type ||
+      assets.all.some(asset => asset.type === demo.id) ||
+      Object.keys(type).sort().join(',') !== Object.keys(demo).sort().join(',') ||
+      type.name !== demo.name ||
+      type.extends !== demo.extends ||
+      type.kategorie !== demo.kategorie ||
+      JSON.stringify(type.fields) !== JSON.stringify(demo.fields) ||
+      JSON.stringify(type.blocks) !== JSON.stringify(demo.blocks)
+    ) {
+      continue;
+    }
+    removed = types.remove(demo.id) || removed;
+  }
+  return removed;
+}
+
+function removeLegacyDemoAssets(store: ReturnType<typeof getAssetStore>): boolean {
+  let removed = false;
+  for (const row of [...store.all]) {
+    const fields = store.getFields(row.id);
+    const isLegacyDemo = LEGACY_DEMO_ASSETS.some(demo =>
+      row.type === demo.type &&
+      row.location === demo.location &&
+      Object.keys(fields).length === Object.keys(demo.fields).length &&
+      Object.entries(demo.fields).every(([name, value]) => fields[name] === value)
+    );
+    if (isLegacyDemo) {
+      store.remove(row.id);
+      removed = true;
+    }
+  }
+  return removed;
+}
+
+function removeLegacyDemoLocations(
+  assets: ReturnType<typeof getAssetStore>,
+  locations: ReturnType<typeof getLocationsStore>
+): boolean {
+  const legacyRooms = [
+    { id: 'raum-101', name: 'Raum 101', eltern: 'serverraum' },
+    { id: 'raum-102', name: 'Raum 102', eltern: 'serverraum' }
+  ];
+  let removed = false;
+
+  for (const room of legacyRooms) {
+    const location = locations.findById(room.id);
+    if (
+      !location ||
+      location.name !== room.name ||
+      location.eltern !== room.eltern ||
+      Object.keys(location).sort().join(',') !== 'eltern,id,name' ||
+      locations.getChildren(room.id).length > 0 ||
+      assets.all.some(asset => asset.location === room.id)
+    ) {
+      continue;
+    }
+    removed = locations.remove(room.id) || removed;
+  }
+
+  const serverRoom = locations.findById('serverraum');
+  if (
+    serverRoom?.name === 'Serverraum' &&
+    Object.keys(serverRoom).sort().join(',') === 'id,name' &&
+    locations.getChildren('serverraum').length === 0 &&
+    !assets.all.some(asset => asset.location === 'serverraum')
+  ) {
+    removed = locations.remove('serverraum') || removed;
+  }
+  return removed;
 }
 
 /**
@@ -163,80 +304,5 @@ export function serializeAssetFile(asset: SerializedAsset): string {
 
   const parsed: ParsedAsset = { direct, blocks: asset.blocks ?? {} };
   return serializeAsset(parsed);
-}
-
-function seedDemoData(): void {
-  // Demo-Typen
-  const typesStore = getTypesStore();
-  typesStore.add({
-    id: 'projektor',
-    name: 'Projektor',
-    extends: '_base',
-    kategorie: 'gerät',
-    fields: [
-      { nr: 0, name: 'hersteller', art: 'text', optionen: null, pflicht: false, sensitiv: false },
-      { nr: 1, name: 'modell', art: 'text', optionen: null, pflicht: false, sensitiv: false },
-      { nr: 2, name: 'seriennummer', art: 'text', optionen: null, pflicht: false, sensitiv: false },
-      { nr: 3, name: 'inventarnummer', art: 'text', optionen: null, pflicht: false, sensitiv: false },
-      { nr: 4, name: 'zustand', art: 'auswahl', optionen: 'neu,einwandfrei,defekt,in_reparatur,verschrottet', pflicht: true, sensitiv: false }
-    ],
-    blocks: []
-  });
-  typesStore.add({
-    id: 'hdmi-kabel',
-    name: 'HDMI-Kabel',
-    extends: '_base',
-    kategorie: 'kabel',
-    fields: [
-      { nr: 0, name: 'hersteller', art: 'text', optionen: null, pflicht: false, sensitiv: false },
-      { nr: 1, name: 'modell', art: 'text', optionen: null, pflicht: false, sensitiv: false },
-      { nr: 2, name: 'länge', art: 'text', optionen: null, pflicht: false, sensitiv: false }
-    ],
-    blocks: []
-  });
-
-  // Demo-Standorte
-  const locationsStore = getLocationsStore();
-  locationsStore.add({ id: 'serverraum', name: 'Serverraum' });
-  locationsStore.add({ id: 'raum-101', name: 'Raum 101', eltern: 'serverraum' });
-  locationsStore.add({ id: 'raum-102', name: 'Raum 102', eltern: 'serverraum' });
-
-  // Demo-Assets
-  const assetStore = getAssetStore();
-  assetStore.createAsset({
-    type: 'projektor',
-    location: 'raum-101',
-    fields: {
-      hersteller: 'Sony',
-      modell: 'VPL-FHZ50',
-      seriennummer: 'S123456789',
-      inventarnummer: 'DEV-2024-0042',
-      zustand: 'einwandfrei'
-    }
-  });
-
-  assetStore.createAsset({
-    type: 'hdmi-kabel',
-    location: 'raum-101',
-    fields: {
-      hersteller: 'Belkin',
-      modell: 'AVC017htb',
-      länge: '2m'
-    }
-  });
-
-  assetStore.createAsset({
-    type: 'projektor',
-    location: 'raum-102',
-    fields: {
-      hersteller: 'Epson',
-      modell: 'EB-2265U',
-      seriennummer: 'EP5678',
-      inventarnummer: 'DEV-2024-0043',
-      zustand: 'einwandfrei'
-    }
-  });
-
-  persistStore();
 }
 

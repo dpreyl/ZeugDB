@@ -35,6 +35,15 @@ describe('resolveAssetTypeFields', () => {
     expect(resolveAssetTypeFields('eins', types).map(item => item.name)).toEqual(['Feld zwei', 'Feld eins']);
   });
 
+  it('does not expose reserved asset metadata as editable fields', () => {
+    const types: TypeDefinition[] = [
+      { id: '_base', fields: [field('type'), field('bezeichnung'), field('zustand')], blocks: [] },
+      { id: 'projektor', extends: '_base', fields: [field('type'), field('bezeichnung')], blocks: [] }
+    ];
+
+    expect(resolveAssetTypeFields('projektor', types).map(item => item.name)).toEqual(['zustand']);
+  });
+
   it('parses both current and legacy option separators', () => {
     expect(fieldOptions({ ...field('Zustand'), optionen: 'neu|defekt, in_reparatur' })).toEqual([
       'neu',

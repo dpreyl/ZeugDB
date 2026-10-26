@@ -1,10 +1,13 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { onMount, untrack } from 'svelte';
+  import { clearFormDraft, readFormDraft, writeFormDraft } from '$lib/services/form-drafts';
   import type { Coord, Location, LocationArt } from '$lib/parser/types';
   import CoordinatePicker from '$lib/map/CoordinatePicker.svelte';
   import {
     coordinatesForLocation,
+    createLocationId,
     getCurrentPosition,
+    getSelectableParents,
     locationCoordinateFields,
     validateCoordinates,
     withCurrentPosition,
@@ -13,24 +16,69 @@
 
   type Props = {
     location?: Location;
+    locations?: Location[];
     onSave: (location: Location) => void;
     onCancel: () => void;
     disabled?: boolean;
+    draftKey?: string;
   };
 
-  let { location, onSave, onCancel, disabled = false }: Props = $props();
+  let { location, locations = [], onSave, onCancel, disabled = false, draftKey }: Props = $props();
   const initialLocation = untrack(() => location);
+  const initialDraftKey = untrack(() => draftKey);
+  const formDraftKey = initialDraftKey ?? `location:${initialLocation?.id ?? 'new'}`;
   const initialArt: LocationArt = initialLocation?.art
     ?? (initialLocation?.polygon ? 'raum' : initialLocation?.route ? 'leitung' : 'punkt');
   let art = $state(initialArt);
-  let id = $state(initialLocation?.id ?? '');
   let name = $state(initialLocation?.name ?? '');
   let parentId = $state(initialLocation?.eltern ?? '');
+  const locationId = $derived(initialLocation?.id ?? (name.trim() ? createLocationId(name, locations) : ''));
+  const parentOptions = $derived(getSelectableParents(locations, initialLocation));
+  const currentParentIsSelectable = $derived(parentOptions.some(option => option.id === parentId));
+  const currentParentName = $derived(
+    locations.find(candidate => candidate.id === parentId)?.name ?? parentId
+  );
+  const currentParentMissing = $derived(Boolean(parentId) && !currentParentIsSelectable);
   let coordinates = $state(coordinatesForLocation(initialLocation, initialArt));
   let validationMessage = $state('');
   let gpsMessage = $state('');
   let isLocating = $state(false);
   let activeMapCoordinateIndex = $state<number | null>(null);
+  let restoringDraft = $state(true);
+  let draftCompleted = false;
+
+  onMount(() => {
+    const draft = readFormDraft<{
+      art: LocationArt;
+      id?: string;
+      name: string;
+      parentId: string;
+      coordinates: CoordinateInput[];
+    }>(formDraftKey);
+    if (draft) {
+      art = draft.art;
+      name = draft.name;
+      parentId = draft.parentId;
+      coordinates = draft.coordinates;
+    }
+    restoringDraft = false;
+  });
+
+  $effect(() => {
+    if (restoringDraft || draftCompleted || disabled) return;
+    writeFormDraft(formDraftKey, {
+      art,
+      name,
+      parentId,
+      coordinates: JSON.parse(JSON.stringify(coordinates))
+    });
+  });
+
+  function cancel() {
+    draftCompleted = true;
+    clearFormDraft(formDraftKey);
+    onCancel();
+  }
 
   function changeArt(event: Event) {
     art = (event.currentTarget as HTMLSelectElement).value as LocationArt;
@@ -96,8 +144,8 @@
   function saveLocation(event: SubmitEvent) {
     event.preventDefault();
     if (disabled) return;
-    if (!id.trim() || !name.trim()) {
-      validationMessage = 'Gib eine ID und einen Namen für den Standort ein.';
+    if (!name.trim()) {
+      validationMessage = 'Gib einen Namen für den Standort ein.';
       return;
     }
 
@@ -107,9 +155,11 @@
       return;
     }
 
+    draftCompleted = true;
+    clearFormDraft(formDraftKey);
     onSave({
       ...location,
-      id: id.trim(),
+      id: locationId || createLocationId(name, locations),
       name: name.trim(),
       eltern: parentId.trim() || undefined,
       art,
@@ -124,7 +174,7 @@
     <dl class="grid gap-4 sm:grid-cols-2">
       <div>
         <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">ID</dt>
-        <dd class="mt-1 text-sm text-gray-900">{id || '—'}</dd>
+        <dd class="mt-1 text-sm text-gray-900">{locationId || '—'}</dd>
       </div>
       <div>
         <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Name</dt>
@@ -132,7 +182,9 @@
       </div>
       <div>
         <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Eltern-ID</dt>
-        <dd class="mt-1 text-sm text-gray-900">{parentId || '—'}</dd>
+        <dd class="mt-1 text-sm text-gray-900">{parentId
+          ? `${currentParentName}${locations.some(candidate => candidate.id === parentId) ? ` (${parentId})` : ' (nicht gefunden)'}`
+          : '—'}</dd>
       </div>
       <div>
         <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Standortart</dt>
@@ -161,14 +213,13 @@
   <fieldset disabled={disabled} class="m-0 min-w-0 space-y-4 border-0 p-0">
   <div class="space-y-3">
     <label class="block space-y-1 text-sm font-medium text-gray-700">
-      <span>ID</span>
+      <span>Automatisch erzeugte ID</span>
       <input
-        bind:value={id}
-        required
-        disabled={Boolean(initialLocation?.id)}
-        autocomplete="off"
-        placeholder="z. B. raum-101"
-        class="w-full rounded border border-gray-300 px-3 py-2"
+        aria-label="Standort-ID"
+        value={locationId}
+        readonly
+        placeholder="Wird aus dem Namen erzeugt"
+        class="w-full rounded border border-gray-300 bg-gray-100 px-3 py-2 text-gray-600"
       />
     </label>
     <label class="block space-y-1 text-sm font-medium text-gray-700">
@@ -182,13 +233,22 @@
       />
     </label>
     <label class="block space-y-1 text-sm font-medium text-gray-700">
-      <span>Eltern-ID (optional)</span>
-      <input
+      <span>Übergeordneter Standort (optional)</span>
+      <select
+        aria-label="Übergeordneter Standort"
         bind:value={parentId}
-        autocomplete="off"
-        placeholder="ID des übergeordneten Standorts"
         class="w-full rounded border border-gray-300 px-3 py-2"
-      />
+      >
+        <option value="">Kein übergeordneter Standort</option>
+        {#if currentParentMissing}
+          <option value={parentId}>Bisherige Zuordnung: {currentParentName} ({parentId})</option>
+        {/if}
+        {#each parentOptions as parent (parent.id)}
+          <option value={parent.id}>
+            {'　'.repeat(parent.depth)}{parent.name} ({parent.id})
+          </option>
+        {/each}
+      </select>
     </label>
   </div>
 
@@ -293,7 +353,7 @@
     <div class="flex justify-end gap-2">
       <button
         type="button"
-        onclick={onCancel}
+        onclick={cancel}
         class="rounded bg-gray-400 px-4 py-2 text-sm text-white hover:bg-gray-500"
       >
         Abbrechen

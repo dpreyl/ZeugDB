@@ -3,8 +3,90 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { resolveAssetTypeBlocks } from '../src/lib/components/asset-blocks.helpers';
+import { parseComponent } from '../src/lib/parser/comp.parser';
+import { parseType } from '../src/lib/parser/type.parser';
 
 describe('Gitea repository initialization', () => {
+  it('makes projectors inherit the shared electrical equipment fields', () => {
+    const typeDir = join(process.cwd(), 'gitea/repo-template/types');
+    const projector = parseType('projektor', readFileSync(join(typeDir, 'projektor.type'), 'utf8'));
+    const electrical = parseType('elektrogeraet', readFileSync(join(typeDir, 'elektrogeraet.type'), 'utf8'));
+
+    expect(projector.extends).toBe('elektrogeraet');
+    expect(electrical.fields.map(field => field.name)).toContain('Seriennummer');
+    expect(electrical.fields.find(field => field.name === 'Seriennummer')?.sensitiv).toBe(false);
+  });
+
+  it('does not define reserved asset metadata as regular fields in the base template', () => {
+    const baseType = readFileSync(
+      join(process.cwd(), 'gitea/repo-template/types/_base.type'),
+      'utf8'
+    );
+
+    expect(baseType).not.toMatch(/^feld: type,/m);
+    expect(baseType).not.toMatch(/^feld: bezeichnung,/m);
+  });
+
+  it('ships shared electrical inspection fields and reusable inspection history', () => {
+    const typeDir = join(process.cwd(), 'gitea/repo-template/types');
+    const electricalType = parseType(
+      'elektrogeraet',
+      readFileSync(join(typeDir, 'elektrogeraet.type'), 'utf8')
+    );
+    const inspection = parseComponent(
+      'pruefung',
+      readFileSync(join(process.cwd(), 'gitea/repo-template/components/pruefung.comp'), 'utf8')
+    );
+
+    expect(electricalType.extends).toBe('_base');
+    expect(electricalType.fields.map(field => field.name)).toEqual(
+      expect.arrayContaining(['Hersteller', 'Modell', 'Seriennummer', 'Inventarnummer', 'Nennspannung', 'Nennleistung'])
+    );
+    expect(electricalType.blocks).toEqual([{ compId: 'pruefung', min: 0, max: 50 }]);
+    expect(inspection.fields.map(field => field.name)).toEqual(
+      expect.arrayContaining(['Prüfdatum', 'Prüfer', 'Prüfergebnis', 'Prüfart', 'Mängel'])
+    );
+    expect(inspection.fields.map(field => field.name)).not.toContain('Nächster Prüftermin');
+    expect(inspection.fields.find(field => field.name === 'Prüfergebnis')?.optionen)
+      .toBe('Bestanden|Mangel|Nicht bestanden');
+  });
+
+  it('provides representative office, kitchen, and grounds equipment types inheriting electrical checks', () => {
+    const typeDir = join(process.cwd(), 'gitea/repo-template/types');
+    const expectedTypes = [
+      'projektor',
+      'monitor',
+      'notebook',
+      'desktop-pc',
+      'drucker',
+      'kaffeemaschine',
+      'kuehlgeraet',
+      'geschirrspuelmaschine',
+      'kombidaempfer',
+      'wasserkocher',
+      'akku-schrauber',
+      'rasenmaeher',
+      'heckenschere',
+      'hochdruckreiniger',
+      'verlaengerungsleitung'
+    ];
+    const electricalType = parseType(
+      'elektrogeraet',
+      readFileSync(join(typeDir, 'elektrogeraet.type'), 'utf8')
+    );
+
+    for (const id of expectedTypes) {
+      const type = parseType(id, readFileSync(join(typeDir, `${id}.type`), 'utf8'));
+      expect(type.extends, id).toBe('elektrogeraet');
+      expect(type.kategorie, id).toBeTruthy();
+      expect(
+        resolveAssetTypeBlocks(id, [electricalType, type]).map(block => block.compId),
+        id
+      ).toContain('pruefung');
+    }
+  });
+
   it('creates missing app-template files and is safe to run again', () => {
     const temp = mkdtempSync(join(tmpdir(), 'zeugdb-gitea-init-'));
     const bin = join(temp, 'bin');

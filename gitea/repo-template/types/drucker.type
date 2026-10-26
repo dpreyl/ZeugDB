@@ -1,0 +1,6 @@
+extends: elektrogeraet
+name: Drucker / Multifunktionsgerät
+kategorie: Büro
+icon: printer
+feld: Druckverfahren, dropdown, Laser|Tinte|Thermo|Sonstige, optional
+feld: Farbe, boolean, optional

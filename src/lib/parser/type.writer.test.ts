@@ -37,4 +37,41 @@ describe('serializeType', () => {
       blocks: []
     })).toBe('feld: notiz, text, optional');
   });
+
+  it('serializes and parses image fields without changing their field type', () => {
+    const type: TypeDefinition = {
+      id: 'kamera',
+      fields: [{
+        nr: 0,
+        name: 'typenschild',
+        art: 'image',
+        optionen: null,
+        pflicht: true,
+        sensitiv: false
+      }],
+      blocks: []
+    };
+
+    expect(serializeType(type)).toBe('feld: typenschild, image, pflicht');
+    expect(parseType(type.id, serializeType(type))).toEqual(type);
+  });
+
+  it('serializes fixed values for component fields in a type block', () => {
+    const type: TypeDefinition = {
+      id: 'hdmi-kabel',
+      fields: [],
+      blocks: [{
+        compId: 'port',
+        min: 2,
+        max: 2,
+        fixedFields: { anschlusstyp: 'HDMI' }
+      }]
+    };
+
+    expect(serializeType(type)).toBe([
+      'block: port, 2, 2',
+      'block-feld: port, anschlusstyp, HDMI'
+    ].join('\n'));
+    expect(parseType(type.id, serializeType(type))).toEqual(type);
+  });
 });

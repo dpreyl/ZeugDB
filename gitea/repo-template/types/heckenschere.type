@@ -1,0 +1,5 @@
+extends: elektrogeraet
+name: Heckenschere
+kategorie: Gelände/Wartung
+feld: Geräteart, dropdown, Elektro|Akku|Benzin, optional
+feld: Schnittlänge (cm), number, optional

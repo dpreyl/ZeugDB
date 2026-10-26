@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount, untrack } from 'svelte';
   import type { BlockDef, ComponentDefinition, FieldType, TypeDefinition } from '$lib/parser/types';
+  import { clearFormDraft, readFormDraft, writeFormDraft } from '$lib/services/form-drafts';
   import {
     buildTypeDefinition,
     createTypeDraft,
@@ -11,12 +13,13 @@
     type: TypeDefinition | null;
     existingTypes: TypeDefinition[];
     existingComponents?: ComponentDefinition[];
-    onSave: (type: TypeDefinition, components: ComponentDefinition[]) => void;
+    onSave: (type: TypeDefinition) => void;
     onCancel: () => void;
   };
 
-  type BlockDraft = BlockDef & { name: string; fields: TypeFieldDraft[] };
+  type BlockDraft = BlockDef;
   let { type, existingTypes, existingComponents = [], onSave, onCancel }: Props = $props();
+  const initialType = untrack(() => type);
   let formName = $state('');
   let formExtends = $state('');
   let formKategorie = $state('');
@@ -24,6 +27,9 @@
   let fields = $state<TypeFieldDraft[]>([]);
   let blocks = $state<BlockDraft[]>([]);
   let errors = $state<string[]>([]);
+  let restoringDraft = $state(true);
+  let draftCompleted = false;
+  const draftKey = `type:${initialType?.id ?? 'new'}`;
 
   $effect(() => {
     const initialDraft = createTypeDraft(type);
@@ -32,16 +38,47 @@
     formKategorie = initialDraft.kategorie;
     formIcon = initialDraft.icon;
     fields = initialDraft.fields;
-    blocks = initialDraft.blocks.map(block => {
-      const component = existingComponents.find(item => item.id === block.compId);
-      return {
-        ...block,
-        name: component?.name ?? block.compId,
-        fields: component?.fields.map(fieldToDraft) ?? []
-      };
-    });
+    blocks = initialDraft.blocks;
     errors = [];
   });
+
+  onMount(() => {
+    const draft = readFormDraft<{
+      name: string;
+      extendsId: string;
+      kategorie: string;
+      icon: string;
+      fields: TypeFieldDraft[];
+      blocks: BlockDraft[];
+    }>(draftKey);
+    if (draft) {
+      formName = draft.name;
+      formExtends = draft.extendsId;
+      formKategorie = draft.kategorie;
+      formIcon = draft.icon;
+      fields = draft.fields;
+      blocks = draft.blocks;
+    }
+    restoringDraft = false;
+  });
+
+  $effect(() => {
+    if (restoringDraft || draftCompleted) return;
+    writeFormDraft(draftKey, {
+      name: formName,
+      extendsId: formExtends,
+      kategorie: formKategorie,
+      icon: formIcon,
+      fields: JSON.parse(JSON.stringify(fields)),
+      blocks: JSON.parse(JSON.stringify(blocks))
+    });
+  });
+
+  function cancel() {
+    draftCompleted = true;
+    clearFormDraft(draftKey);
+    onCancel();
+  }
 
   const fieldTypes = [
     { value: 'text', label: 'Text' },
@@ -51,6 +88,7 @@
     { value: 'dropdown', label: 'Auswahlliste' },
     { value: 'uuid', label: 'UUID' },
     { value: 'asset_ref', label: 'Asset-Referenz' },
+    { value: 'image', label: 'Bild' },
     { value: 'auswahl', label: 'Auswahl (alt)' }
   ];
 
@@ -59,11 +97,29 @@
   }
 
   function addBlock() {
-    blocks.push({ compId: '', name: '', min: 0, max: 1, fields: [] });
+    blocks.push({ compId: '', min: 0, max: 1 });
+  }
+
+  function selectComponent(block: BlockDraft, compId: string) {
+    block.compId = compId;
+    block.fixedFields = undefined;
+  }
+
+  function setFixedField(block: BlockDraft, fieldName: string, value: string) {
+    const fixedFields = { ...block.fixedFields };
+    if (value) fixedFields[fieldName] = value;
+    else delete fixedFields[fieldName];
+    block.fixedFields = Object.keys(fixedFields).length > 0 ? fixedFields : undefined;
+  }
+
+  function optionsFor(field: FieldType): string[] {
+    return field.optionen?.split(/[|,]/).map(option => option.trim()).filter(Boolean) ?? [];
   }
 
   function save() {
-    const componentErrors = validateComponentDrafts(blocks);
+    const missingComponents = blocks.some(block =>
+      !existingComponents.some(component => component.id === block.compId)
+    );
     const result = buildTypeDefinition({
       id: type?.id ?? null,
       name: formName,
@@ -71,58 +127,23 @@
       kategorie: formKategorie,
       icon: formIcon,
       fields,
-      blocks: blocks.map(({ compId, min, max }) => ({ compId, min, max }))
+      blocks: blocks.map(block => ({
+        compId: block.compId,
+        min: block.min,
+        max: block.max,
+        ...(block.fixedFields && { fixedFields: { ...block.fixedFields } })
+      }))
     }, existingTypes);
-    errors = [...result.errors, ...componentErrors];
+    errors = missingComponents
+      ? [...result.errors.filter(error => error !== 'Bitte wähle für jeden Baustein eine Komponente aus.'), 'Bitte wähle eine vorhandene Komponente aus.']
+      : result.errors;
     if (result.type && errors.length === 0) {
-      onSave(result.type, blocks.map(block => ({
-        id: block.compId.trim(),
-        name: block.name.trim() || block.compId.trim(),
-        fields: block.fields.map((field, nr) => fieldToDefinition(field, nr))
-      })));
+      draftCompleted = true;
+      clearFormDraft(draftKey);
+      onSave(result.type);
     }
   }
 
-  function addComponentField(block: BlockDraft) {
-    block.fields.push({ name: '', art: 'text', optionen: [], pflicht: false, sensitiv: false });
-  }
-
-  function fieldToDraft(field: FieldType): TypeFieldDraft {
-    return {
-      name: field.name,
-      art: field.art,
-      optionen: field.optionen
-        ? field.optionen.split(field.optionen.includes('|') ? '|' : ',').map(option => option.trim()).filter(Boolean)
-        : [],
-      pflicht: field.pflicht,
-      sensitiv: field.sensitiv
-    };
-  }
-
-  function fieldToDefinition(field: TypeFieldDraft, nr: number): FieldType {
-    return {
-      nr,
-      name: field.name.trim(),
-      art: field.art,
-      optionen: field.art === 'dropdown' || field.art === 'auswahl' || field.art === 'asset_ref'
-        ? field.optionen.map(option => option.trim()).join('|') || null
-        : null,
-      pflicht: field.pflicht,
-      sensitiv: field.sensitiv
-    };
-  }
-
-  function validateComponentDrafts(drafts: BlockDraft[]): string[] {
-    const errors: string[] = [];
-    for (const block of drafts) {
-      const names = block.fields.map(field => field.name.trim().toLocaleLowerCase());
-      if (names.some(name => !name)) errors.push(`Bitte gib für jedes Feld im Baustein ${block.compId || 'ohne ID'} einen Namen ein.`);
-      if (new Set(names.filter(Boolean)).size !== names.filter(Boolean).length) {
-        errors.push(`Feldnamen im Baustein ${block.compId || 'ohne ID'} müssen eindeutig sein.`);
-      }
-    }
-    return errors;
-  }
 </script>
 
 <form
@@ -138,7 +159,7 @@
         <p class="mt-1 text-xs text-gray-500">Typ-ID: {type.id}</p>
       {/if}
     </div>
-    <button type="button" onclick={onCancel} class="text-sm text-gray-500 hover:text-gray-800">Schließen</button>
+    <button type="button" onclick={cancel} class="text-sm text-gray-500 hover:text-gray-800">Schließen</button>
   </div>
 
   <div class="grid gap-4 sm:grid-cols-2">
@@ -285,7 +306,7 @@
     <div class="flex items-center justify-between gap-3">
       <div>
         <h4 id="blocks-heading" class="font-medium text-gray-900">Bausteine</h4>
-        <p class="text-xs text-gray-500">Wiederholbare Gruppen wie Anschlüsse oder Ports, mit eigenen Feldern.</p>
+        <p class="text-xs text-gray-500">Verweise auf separat definierte Komponenten; hier werden nur Anzahl und Wiederholung festgelegt.</p>
       </div>
       <button type="button" onclick={addBlock} class="rounded-md border border-blue-200 px-3 py-2 text-sm text-blue-700 hover:bg-blue-50">
         + Baustein hinzufügen
@@ -293,16 +314,21 @@
     </div>
 
     {#each blocks as block, index (index)}
+      {@const component = existingComponents.find(item => item.id === block.compId)}
       <fieldset class="space-y-4 rounded-md border border-gray-200 p-3">
         <legend class="sr-only">Baustein {index + 1}</legend>
-        <div class="grid gap-3 sm:grid-cols-[1fr_1fr_8rem_8rem_auto]">
+        <div class="grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_8rem_8rem_auto]">
           <label class="block text-sm font-medium text-gray-700">
-            Baustein-ID
-            <input bind:value={block.compId} maxlength="80" placeholder="z. B. port" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="block text-sm font-medium text-gray-700">
-            Anzeigename
-            <input bind:value={block.name} maxlength="80" placeholder="z. B. Port" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            Baustein-Komponente
+            <select value={block.compId} onchange={(event) => selectComponent(block, event.currentTarget.value)} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+              <option value="">Komponente wählen</option>
+              {#if block.compId && !existingComponents.some(component => component.id === block.compId)}
+                <option value={block.compId}>{block.compId} (nicht vorhanden)</option>
+              {/if}
+              {#each existingComponents as component (component.id)}
+                <option value={component.id}>{component.name || component.id}</option>
+              {/each}
+            </select>
           </label>
           <label class="block text-sm font-medium text-gray-700">
             Minimum
@@ -317,47 +343,55 @@
           </button>
         </div>
 
-        <div class="space-y-2 border-t border-gray-100 pt-3">
-          <div class="flex items-center justify-between gap-3">
-            <h5 class="text-sm font-medium text-gray-800">Felder für {block.name || block.compId || 'Baustein'}</h5>
-            <button type="button" onclick={() => addComponentField(block)} class="text-sm text-blue-700 hover:underline">
-              + Komponentenfeld
-            </button>
+        {#if component?.fields.length}
+          <div class="space-y-3 border-t border-gray-100 pt-3">
+            <div>
+              <h5 class="text-sm font-medium text-gray-800">Typfeste Komponentenwerte</h5>
+              <p class="text-xs text-gray-500">Leere Vorgaben bleiben beim Asset änderbar. Festgelegte Werte werden für jede Instanz dieses Typs übernommen und gesperrt.</p>
+            </div>
+            {#each component.fields as field (field.name)}
+              <label class="block max-w-md text-sm font-medium text-gray-700">
+                Fester Wert für {field.name}
+                {#if field.art === 'dropdown' || field.art === 'auswahl'}
+                  <select
+                    aria-label={`Fester Wert für ${field.name}`}
+                    value={block.fixedFields?.[field.name] ?? ''}
+                    onchange={(event) => setFixedField(block, field.name, event.currentTarget.value)}
+                    class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">Bei Asset eingeben</option>
+                    {#each optionsFor(field) as option (option)}
+                      <option value={option}>{option}</option>
+                    {/each}
+                  </select>
+                {:else if field.art === 'boolean'}
+                  <select
+                    aria-label={`Fester Wert für ${field.name}`}
+                    value={block.fixedFields?.[field.name] ?? ''}
+                    onchange={(event) => setFixedField(block, field.name, event.currentTarget.value)}
+                    class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">Bei Asset eingeben</option>
+                    <option value="true">Ja</option>
+                    <option value="false">Nein</option>
+                  </select>
+                {:else if field.art === 'asset_ref'}
+                  <span class="mt-1 block text-xs font-normal text-gray-500">Asset-Referenzen werden pro Asset gewählt.</span>
+                {:else}
+                  <input
+                    aria-label={`Fester Wert für ${field.name}`}
+                    type={field.art === 'number' || field.art === 'date' ? field.art : 'text'}
+                    value={block.fixedFields?.[field.name] ?? ''}
+                    oninput={(event) => setFixedField(block, field.name, event.currentTarget.value)}
+                    placeholder="Bei Asset eingeben"
+                    class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  />
+                {/if}
+              </label>
+            {/each}
           </div>
-          {#each block.fields as field, fieldIndex (fieldIndex)}
-            <fieldset class="grid gap-3 rounded-md bg-gray-50 p-3 sm:grid-cols-[1fr_1fr_auto]">
-              <legend class="sr-only">Komponentenfeld {fieldIndex + 1}</legend>
-              <label class="block text-sm font-medium text-gray-700">
-                Feldname
-                <input bind:value={field.name} aria-label="Komponentenfeldname" maxlength="80" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
-              </label>
-              <label class="block text-sm font-medium text-gray-700">
-                Eingabetyp
-                <select bind:value={field.art} aria-label="Komponenten-Eingabetyp" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
-                  {#each fieldTypes as option (option.value)}
-                    <option value={option.value}>{option.label}</option>
-                  {/each}
-                </select>
-              </label>
-              <button type="button" onclick={() => block.fields.splice(fieldIndex, 1)} class="self-end rounded-md px-3 py-2 text-sm text-red-700">
-                Entfernen
-              </button>
-              {#if field.art === 'asset_ref'}
-                <div class="space-y-2 sm:col-span-2">
-                  <p class="text-sm text-gray-700">Kompatible Asset-Typ-IDs</p>
-                  {#each field.optionen as option, optionIndex (optionIndex)}
-                    <input bind:value={field.optionen[optionIndex]} aria-label="Komponenten-Asset-Typ" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
-                  {/each}
-                  <button type="button" onclick={() => field.optionen.push('')} class="mt-1 text-xs text-blue-700">+ Typ-ID</button>
-                </div>
-              {/if}
-              <label class="flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" bind:checked={field.pflicht} />
-                Pflichtfeld
-              </label>
-            </fieldset>
-          {/each}
-        </div>
+        {/if}
+
       </fieldset>
     {/each}
   </section>
@@ -376,7 +410,7 @@
     <button type="submit" class="rounded-md bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700">
       Speichern
     </button>
-    <button type="button" onclick={onCancel} class="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+    <button type="button" onclick={cancel} class="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
       Abbrechen
     </button>
   </div>

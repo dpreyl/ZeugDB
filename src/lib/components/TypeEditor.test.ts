@@ -1,9 +1,29 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TypeEditor from './TypeEditor.svelte';
 import type { TypeDefinition } from '$lib/parser/types';
 
 describe('TypeEditor', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('restores an unsaved type definition when the editor is recreated', async () => {
+    render(TypeEditor, {
+      props: { type: null, existingTypes: [], onSave: vi.fn(), onCancel: vi.fn() }
+    });
+    await fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'Projektor' } });
+    await fireEvent.click(screen.getByRole('button', { name: '+ Feld hinzufügen' }));
+    await fireEvent.input(screen.getByLabelText('Feldname'), { target: { value: 'Leistung' } });
+    await waitFor(() => expect(localStorage.getItem('zeugdb:form-draft:type:new')).not.toBeNull());
+
+    cleanup();
+    render(TypeEditor, {
+      props: { type: null, existingTypes: [], onSave: vi.fn(), onCancel: vi.fn() }
+    });
+
+    await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Projektor'));
+    expect((screen.getByLabelText('Feldname') as HTMLInputElement).value).toBe('Leistung');
+  });
+
   it('creates fields and dropdown options using form controls', async () => {
     const onSave = vi.fn();
     render(TypeEditor, {
@@ -19,6 +39,7 @@ describe('TypeEditor', () => {
     await fireEvent.click(screen.getByLabelText('Pflichtfeld'));
     await fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
 
+    expect(localStorage.getItem('zeugdb:form-draft:type:new')).toBeNull();
     expect(onSave).toHaveBeenCalledWith({
       id: 'projektor',
       name: 'Projektor',
@@ -31,7 +52,24 @@ describe('TypeEditor', () => {
         sensitiv: false
       }],
       blocks: []
-    }, []);
+    });
+  });
+
+  it('offers an image field type for asset types', async () => {
+    const onSave = vi.fn();
+    render(TypeEditor, {
+      props: { type: null, existingTypes: [], onSave, onCancel: vi.fn() }
+    });
+
+    await fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'Kamera' } });
+    await fireEvent.click(screen.getByRole('button', { name: '+ Feld hinzufügen' }));
+    await fireEvent.input(screen.getByLabelText('Feldname'), { target: { value: 'Typenschild' } });
+    await fireEvent.change(screen.getByLabelText('Eingabetyp'), { target: { value: 'image' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      fields: [expect.objectContaining({ name: 'Typenschild', art: 'image' })]
+    }));
   });
 
   it('loads an existing type and displays validation errors instead of saving invalid fields', async () => {
@@ -62,7 +100,39 @@ describe('TypeEditor', () => {
     expect(screen.getByRole('alert').textContent).toContain('Bitte gib für jedes Feld einen Namen ein.');
   });
 
-  it('definiert Felder für einen Block und speichert die Komponente mit dem Typ', async () => {
+  it('referenziert eine bestehende Komponente, ohne ihre Felder im Typ zu bearbeiten', async () => {
+    const onSave = vi.fn();
+    const port = {
+      id: 'port',
+      name: 'Port',
+      fields: [{
+        nr: 0,
+        name: 'kabel',
+        art: 'asset_ref',
+        optionen: 'hdmi-kabel',
+        pflicht: false,
+        sensitiv: false
+      }]
+    };
+    render(TypeEditor, {
+      props: { type: null, existingTypes: [], existingComponents: [port], onSave, onCancel: vi.fn() }
+    });
+
+    await fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'Projektor' } });
+    await fireEvent.click(screen.getByRole('button', { name: '+ Baustein hinzufügen' }));
+    await fireEvent.change(screen.getByLabelText('Baustein-Komponente'), { target: { value: 'port' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(screen.queryByText('Felder für Port')).toBeNull();
+    expect(screen.queryByRole('button', { name: '+ Komponentenfeld' })).toBeNull();
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'projektor',
+      blocks: [{ compId: 'port', min: 0, max: 1 }]
+    }));
+    expect(onSave.mock.calls[0]).toHaveLength(1);
+  });
+
+  it('verlangt eine vorhandene Komponente für jeden Baustein', async () => {
     const onSave = vi.fn();
     render(TypeEditor, {
       props: { type: null, existingTypes: [], existingComponents: [], onSave, onCancel: vi.fn() }
@@ -70,29 +140,43 @@ describe('TypeEditor', () => {
 
     await fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'Projektor' } });
     await fireEvent.click(screen.getByRole('button', { name: '+ Baustein hinzufügen' }));
-    await fireEvent.input(screen.getByPlaceholderText('z. B. port'), { target: { value: 'port' } });
-    await fireEvent.input(screen.getByPlaceholderText('z. B. Port'), { target: { value: 'Port' } });
-    await fireEvent.click(screen.getByRole('button', { name: '+ Komponentenfeld' }));
-    await fireEvent.input(screen.getByLabelText('Komponentenfeldname'), { target: { value: 'kabel' } });
-    await fireEvent.change(screen.getByLabelText('Komponenten-Eingabetyp'), { target: { value: 'asset_ref' } });
-    await fireEvent.click(screen.getByRole('button', { name: '+ Typ-ID' }));
-    await fireEvent.input(screen.getByLabelText('Komponenten-Asset-Typ'), { target: { value: 'hdmi-kabel' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
 
-    expect(onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'projektor', blocks: [{ compId: 'port', min: 0, max: 1 }] }),
-      [{
-        id: 'port',
-        name: 'Port',
-        fields: [{
-          nr: 0,
-          name: 'kabel',
-          art: 'asset_ref',
-          optionen: 'hdmi-kabel',
-          pflicht: false,
-          sensitiv: false
-        }]
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toContain('Bitte wähle eine vorhandene Komponente aus.');
+  });
+
+  it('legt einen festen Komponentenfeldwert am Typ statt an der Komponente fest', async () => {
+    const onSave = vi.fn();
+    const port = {
+      id: 'port',
+      name: 'Port',
+      fields: [{
+        nr: 0,
+        name: 'anschlusstyp',
+        art: 'dropdown',
+        optionen: 'HDMI|SDI|USB',
+        pflicht: false,
+        sensitiv: false
       }]
-    );
+    };
+    render(TypeEditor, {
+      props: { type: null, existingTypes: [], existingComponents: [port], onSave, onCancel: vi.fn() }
+    });
+
+    await fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'HDMI-Kabel' } });
+    await fireEvent.click(screen.getByRole('button', { name: '+ Baustein hinzufügen' }));
+    await fireEvent.change(screen.getByLabelText('Baustein-Komponente'), { target: { value: 'port' } });
+    await fireEvent.change(screen.getByLabelText('Fester Wert für anschlusstyp'), { target: { value: 'HDMI' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      blocks: [{
+        compId: 'port',
+        min: 0,
+        max: 1,
+        fixedFields: { anschlusstyp: 'HDMI' }
+      }]
+    }));
   });
 });

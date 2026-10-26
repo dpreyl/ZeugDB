@@ -18,7 +18,10 @@ export function resolveAssetTypeFields(typeId: string, types: TypeDefinition[]):
     return [...fields.values()];
   }
 
-  return resolve(typeId, new Set());
+  return resolve(typeId, new Set()).filter(field => {
+    const name = field.name.trim().toLocaleLowerCase();
+    return name !== 'type' && name !== 'bezeichnung';
+  });
 }
 
 export function fieldOptions(field: FieldType): string[] {

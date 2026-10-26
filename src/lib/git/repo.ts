@@ -51,9 +51,11 @@ export interface StatusEntry {
  */
 export class GitRepo implements RepoFs {
   private fs: InstanceType<typeof LightningFS>;
+  private promises: InstanceType<typeof LightningFS>['promises'];
 
   constructor(name = 'zeugdb-git') {
     this.fs = new LightningFS(name);
+    this.promises = this.fs.promises;
   }
 
   getFs(): InstanceType<typeof LightningFS> {
@@ -64,36 +66,46 @@ export class GitRepo implements RepoFs {
 
   async writeFile(path: string, content: string): Promise<void> {
     const fsPath = normalizeFsPath(path);
-    const separator = fsPath.lastIndexOf('/');
-    if (separator > 0) {
-      const parent = fsPath.slice(1, separator);
-      let directory = '/';
+    await this.createParentDirectories(fsPath);
+    await this.promises.writeFile(fsPath, new TextEncoder().encode(content));
+  }
 
-      for (const segment of parent.split('/')) {
-        directory = `${directory.replace(/\/$/, '')}/${segment}`;
-        try {
-          await this.fs.promises.mkdir(directory);
-        } catch (error) {
-          if ((error as { code?: string }).code !== 'EEXIST') {
-            throw error;
-          }
-        }
-      }
-    }
-    await this.fs.promises.writeFile(fsPath, new TextEncoder().encode(content));
+  async writeFileBinary(path: string, content: Uint8Array): Promise<void> {
+    const fsPath = normalizeFsPath(path);
+    await this.createParentDirectories(fsPath);
+    await this.promises.writeFile(fsPath, content);
   }
 
   async readFile(path: string): Promise<string> {
-    const data = await this.fs.promises.readFile(normalizeFsPath(path));
+    const data = await this.promises.readFile(normalizeFsPath(path));
     return new TextDecoder().decode(data);
   }
 
+  async readBinaryFile(path: string): Promise<Uint8Array> {
+    return this.promises.readFile(normalizeFsPath(path));
+  }
+
   async readdir(dir: string): Promise<string[]> {
-    return this.fs.promises.readdir(normalizeFsPath(dir));
+    return this.promises.readdir(normalizeFsPath(dir));
   }
 
   async unlink(path: string): Promise<void> {
-    await this.fs.promises.unlink(normalizeFsPath(path));
+    await this.promises.unlink(normalizeFsPath(path));
+  }
+
+  private async createParentDirectories(path: string): Promise<void> {
+    const parent = path.slice(0, path.lastIndexOf('/'));
+    if (!parent || parent === '/') return;
+
+    let directory = '';
+    for (const segment of parent.slice(1).split('/')) {
+      directory += `/${segment}`;
+      try {
+        await this.promises.mkdir(directory);
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'EEXIST') throw error;
+      }
+    }
   }
 
   // --- Git-Operationen ---
@@ -104,10 +116,11 @@ export class GitRepo implements RepoFs {
   async init(opts: { authorName: string; authorEmail: string }): Promise<void> {
     await git.init({ fs: this.fs, dir: '/' });
     // Schreiben der User-Konfiguration ins Config-File
-    await this.fs.promises.writeFile(
+    await this.promises.writeFile(
       '/.git/config',
       `[user]\n\tname = ${opts.authorName}\n\temail = ${opts.authorEmail}\n`
     );
+    await this.promises.flush();
   }
 
   /**
@@ -133,6 +146,7 @@ export class GitRepo implements RepoFs {
         'Authorization': `Basic ${btoa(`${opts.auth.username}:${opts.auth.token}`)}`
       }
     });
+    await this.promises.flush();
   }
 
   /**
@@ -160,6 +174,7 @@ export class GitRepo implements RepoFs {
         'Authorization': `Basic ${btoa(`${opts.auth.username}:${opts.auth.token}`)}`
       }
     });
+    await this.promises.flush();
     return [];
   }
 
@@ -190,6 +205,7 @@ export class GitRepo implements RepoFs {
       },
       author: opts.author
     });
+    await this.promises.flush();
   }
 
   /**
@@ -214,7 +230,7 @@ export class GitRepo implements RepoFs {
         await git.remove({ fs: this.fs, dir: '/', filepath: file });
       }
     }
-    return git.commit({
+    const oid = await git.commit({
       fs: this.fs,
       dir: '/',
       message: opts.message,
@@ -223,6 +239,8 @@ export class GitRepo implements RepoFs {
         email: opts.authorEmail
       }
     });
+    await this.promises.flush();
+    return oid;
   }
 
   /**
@@ -269,38 +287,40 @@ export class GitRepo implements RepoFs {
    * Erstellt einen neuen Branch am aktuellen HEAD (ohne Checkout).
    */
   async createBranch(ref: string): Promise<void> {
+    await this.createParentDirectories(`/.git/refs/heads/${ref}`);
     await git.branch({
       fs: this.fs,
       dir: '/',
       ref,
       checkout: false
     });
+    await this.promises.flush();
   }
 
   /**
    * Wechselt zu einem bestehenden Branch.
    */
-  async checkoutBranch(ref: string): Promise<void> {
+  async checkoutBranch(ref: string, force = false): Promise<void> {
     await git.checkout({
       fs: this.fs,
       dir: '/',
       ref,
-      force: false
+      force
     });
+    await this.promises.flush();
   }
 
   /**
    * Gibt den aktuellen Branch-Namen zurück.
    */
   async getCurrentBranch(): Promise<string | undefined> {
-    const result = await git.currentBranch({ fs: this.fs, dir: '/' });
-    return result ?? undefined;
+    const b = await git.currentBranch({ fs: this.fs, dir: '/' });
+    return b || undefined;
   }
 
   /**
    * Führt einen Merge durch.
-   * Bei squash=true wird ein Squash-Merge durchgeführt (Merge ohne Update,
-   * dann manueller Commit).
+   * Bei squash=true wird ein Squash-Merge als Commit durchgeführt.
    */
   async mergeBranch(opts: {
     branch: string;
@@ -310,7 +330,6 @@ export class GitRepo implements RepoFs {
     message?: string;
   }): Promise<void> {
     if (opts.squash) {
-      // Squash-Merge: Änderungen mergen, aber keinen Merge-Commit erstellen
       const mergeResult = await git.merge({
         fs: this.fs,
         dir: '/',
@@ -322,10 +341,11 @@ export class GitRepo implements RepoFs {
           email: opts.authorEmail
         }
       });
-      if (!mergeResult.tree) return;
+      if (!mergeResult.tree) {
+        await this.promises.flush();
+        return;
+      }
 
-      // Der Merge-Baum enthält die zusammengeführten Dateien. Ein Commit
-      // ohne expliziten Baum würde nur den unveränderten Index committen.
       await git.commit({
         fs: this.fs,
         dir: '/',
@@ -336,6 +356,7 @@ export class GitRepo implements RepoFs {
           email: opts.authorEmail
         }
       });
+      await this.promises.flush();
     } else {
       await git.merge({
         fs: this.fs,
@@ -347,6 +368,7 @@ export class GitRepo implements RepoFs {
         },
         fastForward: true
       });
+      await this.promises.flush();
     }
   }
 
@@ -366,6 +388,7 @@ export class GitRepo implements RepoFs {
         'Authorization': `Basic ${btoa(`${opts.auth.username}:${opts.auth.token}`)}`
       }
     });
+    await this.promises.flush();
   }
 
   /**
@@ -377,6 +400,7 @@ export class GitRepo implements RepoFs {
       dir: '/',
       ref
     });
+    await this.promises.flush();
   }
 }
 

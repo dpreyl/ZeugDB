@@ -1,0 +1,6 @@
+extends: elektrogeraet
+name: Kaffeemaschine
+kategorie: Gastro-Küche
+feld: Geräteart, dropdown, Filter|Siebträger|Vollautomat|Kapsel|Sonstige, optional
+feld: Wasseranschluss, boolean, optional
+feld: Leistung (W), number, optional

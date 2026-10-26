@@ -1,0 +1,5 @@
+extends: elektrogeraet
+name: Rasenmäher
+kategorie: Gelände/Wartung
+feld: Geräteart, dropdown, Elektro|Akku|Benzin, optional
+feld: Schnittbreite (cm), number, optional

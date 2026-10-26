@@ -3,6 +3,7 @@ import {
   loadGitConfig,
   saveGitConfig,
   getGitRepo,
+  cloneRepo,
   pushToRemote,
   pullFromRemote,
   commitChanges,
@@ -17,6 +18,7 @@ import * as repoModule from '$lib/git/repo';
 import * as assetStoreModule from '$lib/stores/assets.store.svelte';
 import * as locationStoreModule from '$lib/stores/locations.store.svelte';
 import * as typeStoreModule from '$lib/stores/types.store.svelte';
+import * as fotoStoreModule from '$lib/stores/fotos.store.svelte';
 
 beforeEach(() => {
   vi.stubGlobal('indexedDB', {});
@@ -28,7 +30,10 @@ afterEach(() => {
 
 function mockGitRepo(implementation: Partial<repoModule.GitRepo>): void {
   vi.spyOn(repoModule, 'GitRepo').mockImplementation(function () {
-    return implementation as repoModule.GitRepo;
+    return {
+      status: vi.fn().mockResolvedValue([]),
+      ...implementation
+    } as repoModule.GitRepo;
   });
 }
 
@@ -101,6 +106,41 @@ describe('git.service — Konfiguration', () => {
   it('gibt null bei korrupten Daten zurück', () => {
     localStorage.setItem('zeugdb:gitConfig', 'invalid json');
     expect(loadGitConfig()).toBeNull();
+  });
+});
+
+describe('git.service — Clone', () => {
+  beforeEach(() => {
+    resetGitRepo();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    resetGitRepo();
+    vi.restoreAllMocks();
+  });
+
+  it('lädt Repository-Daten nach dem Klonen in die Stores', async () => {
+    const config: GitConfig = {
+      url: 'http://example.com/repo.git',
+      username: 'testuser',
+      token: 'token'
+    };
+    const mockClone = vi.fn().mockResolvedValue(undefined);
+    mockGitRepo({ clone: mockClone });
+    const loader = await import('./git-store-loader');
+    const loadStores = vi.spyOn(loader, 'loadGitFsToStores').mockResolvedValue();
+
+    await cloneRepo(config);
+
+    expect(mockClone).toHaveBeenCalledWith({
+      url: config.url,
+      auth: { username: config.username, token: config.token },
+      onprogress: undefined
+    });
+    expect(loadStores).toHaveBeenCalledOnce();
+    expect(loadStores).toHaveBeenCalledWith(expect.anything());
+    expect(loadGitConfig()).toEqual(config);
   });
 });
 
@@ -275,6 +315,39 @@ describe('git.service — Commit', () => {
     });
   });
 
+  it('committet entfernte Asset-Dateien als Git-Löschung', async () => {
+    const commit = vi.fn().mockResolvedValue('asset-delete-sha');
+    mockGitRepo({
+      readFile: vi.fn().mockRejectedValue(new Error('Datei fehlt')),
+      writeFile: vi.fn().mockResolvedValue(undefined),
+      readdir: vi.fn().mockImplementation(async (directory: string) =>
+        directory === 'assets' ? ['asset-old.asset', 'README.md'] : []
+      ),
+      commit
+    });
+    vi.spyOn(assetStoreModule, 'getAssetStore').mockReturnValue({
+      all: [],
+      findFull: vi.fn()
+    } as unknown as ReturnType<typeof assetStoreModule.getAssetStore>);
+    vi.spyOn(locationStoreModule, 'getLocationsStore').mockReturnValue({
+      all: []
+    } as unknown as ReturnType<typeof locationStoreModule.getLocationsStore>);
+    vi.spyOn(typeStoreModule, 'getTypesStore').mockReturnValue({
+      all: []
+    } as unknown as ReturnType<typeof typeStoreModule.getTypesStore>);
+
+    await expect(commitAllToGit('Asset gelöscht', 'Autor', 'a@example.com'))
+      .resolves.toBe('asset-delete-sha');
+
+    expect(commit).toHaveBeenCalledWith({
+      message: 'Asset gelöscht',
+      authorName: 'Autor',
+      authorEmail: 'a@example.com',
+      files: [],
+      deletedFiles: ['assets/asset-old.asset']
+    });
+  });
+
   it('committet geänderte Typdefinitionen als .type-Dateien', async () => {
     const commit = vi.fn().mockResolvedValue('type-sha');
     mockGitRepo({
@@ -349,6 +422,39 @@ describe('git.service — Commit', () => {
       deletedFiles: ['locations/raum-101.location']
     });
   });
+
+  it('committet neue und gelöschte Foto-Dateien aus dem Git-Arbeitsbaum', async () => {
+    const commit = vi.fn().mockResolvedValue('photo-sha');
+    mockGitRepo({
+      readFile: vi.fn().mockRejectedValue(new Error('Datei fehlt')),
+      readdir: vi.fn().mockResolvedValue([]),
+      commit,
+      status: vi.fn().mockResolvedValue([
+        { file: 'fotos/asset-1/photo-0.png', before: null, after: 2 },
+        { file: 'fotos/asset-1/photo-1.png', before: 1, after: null }
+      ])
+    });
+    vi.spyOn(assetStoreModule, 'getAssetStore').mockReturnValue({
+      all: [],
+      findFull: vi.fn()
+    } as unknown as ReturnType<typeof assetStoreModule.getAssetStore>);
+    vi.spyOn(locationStoreModule, 'getLocationsStore').mockReturnValue({
+      all: []
+    } as unknown as ReturnType<typeof locationStoreModule.getLocationsStore>);
+    vi.spyOn(typeStoreModule, 'getTypesStore').mockReturnValue({
+      all: []
+    } as unknown as ReturnType<typeof typeStoreModule.getTypesStore>);
+
+    await expect(commitAllToGit('Foto geändert', 'Autor', 'a@example.com')).resolves.toBe('photo-sha');
+
+    expect(commit).toHaveBeenCalledWith({
+      message: 'Foto geändert',
+      authorName: 'Autor',
+      authorEmail: 'a@example.com',
+      files: ['fotos/asset-1/photo-0.png'],
+      deletedFiles: ['fotos/asset-1/photo-1.png']
+    });
+  });
 });
 
 describe('git.service — syncEditBranch', () => {
@@ -400,6 +506,10 @@ describe('git.service — syncEditBranch', () => {
       username: 'test-user',
       finishEdit: vi.fn()
     };
+    const flushPendingLfs = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(fotoStoreModule, 'getFotoStore').mockReturnValue({
+      flushPendingLfs
+    } as unknown as ReturnType<typeof fotoStoreModule.getFotoStore>);
     vi.spyOn(editModeModule, 'getEditMode').mockReturnValue(
       editMode as unknown as import('$lib/stores/edit-mode.svelte').EditMode
     );
@@ -422,6 +532,11 @@ describe('git.service — syncEditBranch', () => {
     expect(mockCheckout.mock.invocationCallOrder[0]).toBeLessThan(mockMerge.mock.invocationCallOrder[0]);
     expect(mockMerge.mock.invocationCallOrder[0]).toBeLessThan(mockMerge.mock.invocationCallOrder[1]);
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({ branch: 'main' }));
+    expect(flushPendingLfs).toHaveBeenCalledOnce();
+    expect(mockCheckout).toHaveBeenLastCalledWith('main', true);
+    expect(mockPush.mock.invocationCallOrder[0]).toBeLessThan(
+      mockCheckout.mock.invocationCallOrder[mockCheckout.mock.invocationCallOrder.length - 1]
+    );
     expect(editMode.finishEdit).toHaveBeenCalledOnce();
   });
 });

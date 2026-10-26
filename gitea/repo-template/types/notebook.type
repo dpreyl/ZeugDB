@@ -1,0 +1,7 @@
+extends: elektrogeraet
+name: Notebook
+kategorie: Büro
+icon: laptop
+feld: Bildschirmdiagonale (Zoll), number, optional
+feld: Betriebssystem, text, optional
+feld: Akkuzustand, dropdown, gut|eingeschränkt|defekt|nicht_geprüft, optional

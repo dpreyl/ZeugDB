@@ -11,6 +11,10 @@
     assets?: AssetReferenceOption[];
     types?: TypeDefinition[];
     excludedAssetId?: string;
+    onImageSelect?: (name: string, file: File) => void | Promise<void>;
+    imageUrls?: Record<string, string>;
+    imagePreviews?: Record<string, string>;
+    uploadingImageFields?: string[];
   };
 
   let {
@@ -20,7 +24,11 @@
     onValueChange,
     assets = [],
     types = [],
-    excludedAssetId
+    excludedAssetId,
+    onImageSelect,
+    imageUrls = {},
+    imagePreviews = {},
+    uploadingImageFields = []
   }: Props = $props();
 
   function optionsFor(field: FieldType): string[] {
@@ -34,6 +42,12 @@
     if (field.art === 'asset_ref') return assets.find(asset => asset.id === value)?.label ?? value;
     return value;
   }
+
+  function imageUrl(field: FieldType): string {
+    const value = values[field.name] ?? '';
+    return imagePreviews[field.name] ?? imageUrls[value] ?? '';
+  }
+
 </script>
 
 {#if fields.length > 0}
@@ -42,7 +56,31 @@
       {#if editable}
         <label class="block text-sm font-medium text-gray-700">
           {field.name}{#if field.pflicht}<span aria-hidden="true"> *</span>{/if}
-          {#if field.art === 'dropdown' || field.art === 'auswahl' || field.art === 'boolean' || field.art === 'asset_ref'}
+          {#if field.art === 'image'}
+            {#if imageUrl(field)}
+              <img src={imageUrl(field)} alt={field.name} class="mt-2 h-32 w-full rounded-md border border-gray-200 bg-gray-50 object-contain" />
+            {/if}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              capture="environment"
+              required={field.pflicht && !values[field.name] && !imagePreviews[field.name]}
+              aria-label="Bild für {field.name}"
+              disabled={uploadingImageFields.includes(field.name)}
+              onchange={async (event) => {
+                const input = event.currentTarget;
+                const file = input.files?.[0];
+                input.value = '';
+                if (file) await onImageSelect?.(field.name, file);
+              }}
+              class="mt-1 block w-full text-sm text-gray-500 file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+            />
+            {#if uploadingImageFields.includes(field.name)}
+              <span class="mt-1 block text-xs text-gray-500" role="status">Bild wird gespeichert…</span>
+            {:else if values[field.name]}
+              <span class="mt-1 block text-xs text-gray-500">Bild gespeichert</span>
+            {/if}
+          {:else if field.art === 'dropdown' || field.art === 'auswahl' || field.art === 'boolean' || field.art === 'asset_ref'}
             <select
               name={field.name}
               value={values[field.name] ?? ''}
@@ -75,7 +113,13 @@
       {:else}
         <div>
           <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{field.name}</dt>
-          <dd class="mt-1 min-h-9 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-900">{displayValue(field)}</dd>
+          <dd class="mt-1 min-h-9 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-900">
+            {#if field.art === 'image' && imageUrl(field)}
+              <img src={imageUrl(field)} alt={field.name} class="max-h-40 rounded-md object-contain" />
+            {:else}
+              {displayValue(field)}
+            {/if}
+          </dd>
         </div>
       {/if}
     {/each}

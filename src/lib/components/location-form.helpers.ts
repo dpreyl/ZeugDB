@@ -1,6 +1,8 @@
 import type { Coord, Location, LocationArt } from '../parser/types';
+import { flattenLocationTree } from '../locations/location-tree';
 
 export type CoordinateInput = { lat: string; lon: string };
+export type LocationParentOption = { id: string; name: string; depth: number };
 type GeolocationPort = Pick<Geolocation, 'getCurrentPosition'>;
 
 const MINIMUM_COORDINATES: Record<LocationArt, number> = {
@@ -8,6 +10,52 @@ const MINIMUM_COORDINATES: Record<LocationArt, number> = {
   raum: 3,
   leitung: 2
 };
+
+export function createLocationId(name: string, locations: readonly Location[]): string {
+  const base = name.trim().toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'standort';
+  const usedIds = new Set(locations.flatMap(location => location.id ? [location.id] : []));
+  if (!usedIds.has(base)) return base;
+
+  let suffix = 2;
+  while (usedIds.has(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
+}
+
+export function getSelectableParents(
+  locations: Location[],
+  currentLocation?: Location
+): LocationParentOption[] {
+  const excludedIds = new Set<string>();
+  if (currentLocation?.id) excludedIds.add(currentLocation.id);
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const location of locations) {
+      if (location.id && location.eltern && excludedIds.has(location.eltern) &&
+          !excludedIds.has(location.id)) {
+        excludedIds.add(location.id);
+        changed = true;
+      }
+    }
+  }
+
+  return flattenLocationTree(locations)
+    .filter(({ location }) => Boolean(location.id) && !excludedIds.has(location.id!))
+    .map(({ location, depth }) => ({
+      id: location.id!,
+      name: location.name || location.id!,
+      depth
+    }));
+}
 
 export function coordinatesForLocation(
   location?: Location,
@@ -32,6 +80,9 @@ export function validateCoordinates(
   art: LocationArt,
   coordinates: readonly CoordinateInput[]
 ): string | null {
+  const hasAnyCoordinate = coordinates.some(({ lat, lon }) => lat.trim() || lon.trim());
+  if (!hasAnyCoordinate) return null;
+
   const minimum = MINIMUM_COORDINATES[art];
   if (coordinates.length < minimum) {
     const name = art === 'raum' ? 'Ein Raum' : art === 'leitung' ? 'Eine Leitung' : 'Ein Punkt';
@@ -63,6 +114,11 @@ export function locationCoordinateFields(
   art: LocationArt,
   coordinates: readonly CoordinateInput[]
 ): Pick<Location, 'lat' | 'lon' | 'polygon' | 'route'> {
+  const hasAnyCoordinate = coordinates.some(({ lat, lon }) => lat.trim() || lon.trim());
+  if (!hasAnyCoordinate) {
+    return { lat: undefined, lon: undefined, polygon: undefined, route: undefined };
+  }
+
   const parsed: Coord[] = coordinates.map(({ lat, lon }) => ({
     lat: Number(lat),
     lon: Number(lon)

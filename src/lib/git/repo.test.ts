@@ -1,13 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock LightningFS with its promise-based API.
+const lightningFsMocks = vi.hoisted(() => ({
+  mkdir: vi.fn().mockResolvedValue(undefined)
+}));
+
 vi.mock('@isomorphic-git/lightning-fs', () => ({
   default: class {
     promises = {
       writeFile: vi.fn().mockResolvedValue(undefined),
       readFile: vi.fn().mockResolvedValue(new TextEncoder().encode('')),
       readdir: vi.fn().mockResolvedValue([]),
-      mkdir: vi.fn().mockResolvedValue(undefined),
+      mkdir: lightningFsMocks.mkdir,
+      flush: vi.fn().mockResolvedValue(undefined),
       rmdir: vi.fn().mockResolvedValue(undefined),
       unlink: vi.fn().mockResolvedValue(undefined),
       stat: vi.fn(),
@@ -18,7 +23,7 @@ vi.mock('@isomorphic-git/lightning-fs', () => ({
 
 // Hole die echten Module um die Mocks zu patchen
 vi.mock('isomorphic-git', async (importOriginal) => {
-  const actual = (await importOriginal()) as object;
+  const actual = (await importOriginal()) as Record<string, any>;
   return {
     ...actual,
     init: vi.fn().mockResolvedValue(undefined),
@@ -69,6 +74,33 @@ describe('GitRepo Branch-Management', () => {
     );
   });
 
+  it('persistiert geklonte Repos vollständig, bevor clone zurückkehrt', async () => {
+    const flush = vi.spyOn(repo.getFs().promises, 'flush');
+
+    await repo.clone({
+      url: 'http://test/repo',
+      auth: { username: 'admin', token: 'token' }
+    });
+
+    expect(git.clone).toHaveBeenCalled();
+    expect(flush).toHaveBeenCalledOnce();
+  });
+
+  it('persistiert Branch- und HEAD-Änderungen vor Rückkehr', async () => {
+    const flush = vi.spyOn(repo.getFs().promises, 'flush');
+
+    await repo.createBranch('edit/test-2025');
+    await repo.checkoutBranch('edit/test-2025');
+
+    expect(flush).toHaveBeenCalledTimes(2);
+  });
+
+  it('legt Elternverzeichnisse für verschachtelte Branch-Namen an', async () => {
+    await repo.createBranch('edit/test-2025');
+
+    expect(lightningFsMocks.mkdir).toHaveBeenCalledWith('/.git/refs/heads/edit');
+  });
+
   it('checkoutBranch wechselt zu bestehendem Branch', async () => {
     await repo.checkoutBranch('edit/test-2025');
     expect(git.checkout).toHaveBeenCalledWith(
@@ -76,6 +108,18 @@ describe('GitRepo Branch-Management', () => {
         fs: expect.anything(),
         dir: '/',
         ref: 'edit/test-2025'
+      })
+    );
+  });
+
+  it('checkoutBranch kann den Arbeitsbaum auf den Branch-Stand zurücksetzen', async () => {
+    await repo.checkoutBranch('main', true);
+
+    expect(git.checkout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dir: '/',
+        ref: 'main',
+        force: true
       })
     );
   });

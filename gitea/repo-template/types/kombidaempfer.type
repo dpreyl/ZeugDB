@@ -1,0 +1,6 @@
+extends: elektrogeraet
+name: Kombidämpfer
+kategorie: Gastro-Küche
+feld: Geräteart, dropdown, Elektro|Gas, optional
+feld: Garraumvolumen (Liter), number, optional
+feld: Wasseranschluss, boolean, optional

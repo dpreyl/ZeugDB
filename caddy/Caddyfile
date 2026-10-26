@@ -1,0 +1,9 @@
+{$APP_HOST}:8443 {
+	tls internal
+	reverse_proxy production:80
+}
+
+{$APP_HOST}:9443 {
+	tls internal
+	reverse_proxy gitserver-proxy:80
+}

@@ -1,0 +1,5 @@
+extends: elektrogeraet
+name: Bohrmaschine
+kategorie: Gelände/Wartung
+feld: Geräteart, dropdown, Bohrmaschine|Schlagbohrmaschine|Bohrhammer, optional
+feld: Drehzahlbereich, text, optional

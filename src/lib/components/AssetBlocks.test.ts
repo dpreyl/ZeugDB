@@ -55,6 +55,27 @@ describe('AssetBlocks', () => {
     expect(values.port['1']).toEqual({});
   });
 
+  it('setzt feste Werte beim Hinzufügen und zeigt diese nicht änderbar an', async () => {
+    let values: AssetBlockValues = { port: { '0': { anschlusstyp: 'HDMI' } } };
+    render(AssetBlocks, {
+      props: {
+        definitions: [{ compId: 'port', min: 1, max: 2, fixedFields: { anschlusstyp: 'HDMI' } }],
+        components: [{
+          id: 'port',
+          name: 'Port',
+          fields: [{ nr: 0, name: 'anschlusstyp', art: 'dropdown', optionen: 'HDMI|SDI|USB', pflicht: false, sensitiv: false }]
+        }],
+        values,
+        editable: true,
+        onValueChange: (next) => { values = next; }
+      }
+    });
+
+    expect((screen.getByLabelText('anschlusstyp') as HTMLSelectElement).disabled).toBe(true);
+    await fireEvent.click(screen.getByRole('button', { name: '+ Port hinzufügen' }));
+    expect(values.port['1']).toEqual({ anschlusstyp: 'HDMI' });
+  });
+
   it('zeigt gespeicherte Bausteinwerte lesbar im Nur-Ansicht-Modus', () => {
     render(AssetBlocks, {
       props: {

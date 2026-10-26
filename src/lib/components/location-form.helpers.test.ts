@@ -2,13 +2,36 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Location } from '../parser/types';
 import {
   coordinatesForLocation,
+  createLocationId,
   getCurrentPosition,
+  getSelectableParents,
   locationCoordinateFields,
   validateCoordinates,
   withCurrentPosition
 } from './location-form.helpers';
 
 describe('location form coordinate helpers', () => {
+  it('creates a readable, normalized ID and appends a suffix for duplicate names', () => {
+    expect(createLocationId('München Büro', [])).toBe('muenchen-buero');
+    expect(createLocationId('München Büro', [{ id: 'muenchen-buero' }])).toBe('muenchen-buero-2');
+    expect(createLocationId('ÄÖÜ ß', [])).toBe('aeoeue-ss');
+    expect(createLocationId('   ', [])).toBe('standort');
+  });
+
+  it('offers existing locations as parent choices but excludes self and descendants', () => {
+    const locations: Location[] = [
+      { id: 'campus', name: 'Campus' },
+      { id: 'building', name: 'Gebäude', eltern: 'campus' },
+      { id: 'room', name: 'Raum', eltern: 'building' },
+      { id: 'other', name: 'Anderes Gebäude' }
+    ];
+
+    expect(getSelectableParents(locations, locations[1])).toEqual([
+      { id: 'campus', name: 'Campus', depth: 0 },
+      { id: 'other', name: 'Anderes Gebäude', depth: 0 }
+    ]);
+  });
+
   it('initializes one blank point for a new point location', () => {
     expect(coordinatesForLocation()).toEqual([{ lat: '', lon: '' }]);
   });
@@ -36,10 +59,25 @@ describe('location form coordinate helpers', () => {
     expect(validateCoordinates(art, coordinates)).toBeNull();
   });
 
+  it.each(['punkt', 'raum', 'leitung'] as const)(
+    'allows a %s location to be saved without coordinates',
+    (art) => {
+      expect(validateCoordinates(art, [])).toBeNull();
+      expect(validateCoordinates(art, coordinatesForLocation(undefined, art))).toBeNull();
+      expect(locationCoordinateFields(art, coordinatesForLocation(undefined, art))).toEqual({
+        lat: undefined,
+        lon: undefined,
+        polygon: undefined,
+        route: undefined
+      });
+    }
+  );
+
   it.each([
-    ['punkt', [{ lat: '', lon: '' }], 'Gib gültige Koordinaten ein.'],
+    ['punkt', [{ lat: '52', lon: '' }], 'Gib gültige Koordinaten ein.'],
     ['leitung', [{ lat: '1', lon: '2' }], 'Eine Leitung benötigt mindestens 2 Koordinaten.'],
     ['raum', [{ lat: '1', lon: '2' }, { lat: '3', lon: '4' }], 'Ein Raum benötigt mindestens 3 Koordinaten.'],
+    ['raum', [{ lat: '', lon: '' }, { lat: '3', lon: '4' }, { lat: '', lon: '' }], 'Gib gültige Koordinaten ein.'],
     ['punkt', [{ lat: '91', lon: '0' }], 'Der Breitengrad muss zwischen -90 und 90 liegen.'],
     ['punkt', [{ lat: '0', lon: '181' }], 'Der Längengrad muss zwischen -180 und 180 liegen.']
   ] as const)('rejects invalid %s coordinates', (art, coordinates, message) => {

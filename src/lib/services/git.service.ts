@@ -6,10 +6,12 @@ import { getTypesStore } from '../stores/types.store.svelte';
 import { getComponentsStore } from '../stores/components.store.svelte';
 import { getLocationsStore } from '../stores/locations.store.svelte';
 import { syncLocationsToGit } from './location-git-sync';
+import { syncAssetsToGit } from './asset-git-sync';
 import { syncTypesToGit } from './type-git-sync';
 import { syncComponentsToGit } from './component-git-sync';
 import { loadGitFsToStores } from './git-store-loader';
 import { persistStore, serializeAssetFile } from './init';
+import { getFotoStore } from '../stores/fotos.store.svelte';
 import { getEditMode } from '../stores/edit-mode.svelte';
 import { getSyncMeta } from '../stores/sync-meta.svelte';
 
@@ -88,6 +90,7 @@ export async function cloneRepo(
     onprogress
   });
   saveGitConfig(config);
+  await loadGitFsToStores(repo);
 }
 
 /**
@@ -98,6 +101,33 @@ export async function pushToRemote(
   branch?: string,
   onprogress?: (progress: GitProgress) => void
 ): Promise<string[]> {
+  const repo = await getGitRepo();
+  return repo.push({
+    auth: { username: config.username, token: config.token },
+    branch,
+    onprogress
+  });
+}
+
+/**
+ * Push-Workflow mit LFS-Integration: Lädt zuerst alle ausstehenden
+ * LFS-Binaries hoch, pusht dann die Git-Änderungen.
+ *
+ * Dies ist der Offline-First-Pfad: Die LFS-Pointer sind bereits
+ * im Git-Repo committet. Nur die Binaries müssen noch hochgeladen werden.
+ */
+export async function syncPushWithLfs(
+  config: GitConfig,
+  branch?: string,
+  onprogress?: (progress: GitProgress) => void
+): Promise<string[]> {
+  // 1. Ausstehende LFS-Binaries hochladen
+  const fotoStore = getFotoStore();
+  onprogress?.({ message: 'LFS-Binaries hochladen...' });
+  await fotoStore.flushPendingLfs();
+
+  // 2. Git-Änderungen puschen
+  onprogress?.({ message: 'Git-Änderungen puschen...' });
   const repo = await getGitRepo();
   return repo.push({
     auth: { username: config.username, token: config.token },
@@ -217,49 +247,40 @@ export async function commitAllToGit(
   const repo = await getGitRepo();
   const assets = getAssetStore();
   const locations = getLocationsStore();
-  const changedFiles: string[] = [];
-
-  for (const row of assets.all) {
+  const assetChanges = await syncAssetsToGit(repo, assets.all.flatMap(row => {
     const asset = assets.findFull(row.id);
-    if (asset) {
-      const content = serializeAssetFile(asset);
-      const path = `assets/${row.id}.asset`;
-      if (await readFileOrNull(repo, path) !== content) {
-        await repo.writeFile(path, content);
-        changedFiles.push(path);
-      }
-    }
-  }
+    return asset ? [{ id: row.id, content: serializeAssetFile(asset) }] : [];
+  }));
 
   const locationChanges = await syncLocationsToGit(repo, locations.all);
-  changedFiles.push(...locationChanges.changedFiles);
-
   const typeChanges = await syncTypesToGit(repo, getTypesStore().all);
-  changedFiles.push(...typeChanges.changedFiles);
   const componentChanges = await syncComponentsToGit(repo, getComponentsStore().all);
-  changedFiles.push(...componentChanges.changedFiles);
+  const pendingChanges = await repo.status();
+  const changedFiles = [
+    ...assetChanges.changedFiles,
+    ...locationChanges.changedFiles,
+    ...typeChanges.changedFiles,
+    ...componentChanges.changedFiles,
+    ...pendingChanges.flatMap(change => change.after === null ? [] : [change.file])
+  ];
   const deletedFiles = [
+    ...assetChanges.deletedFiles,
     ...locationChanges.deletedFiles,
     ...typeChanges.deletedFiles,
-    ...componentChanges.deletedFiles
+    ...componentChanges.deletedFiles,
+    ...pendingChanges.flatMap(change => change.after === null ? [change.file] : [])
   ];
 
-  if (changedFiles.length === 0 && deletedFiles.length === 0) return null;
+  const uniqueChangedFiles = [...new Set(changedFiles)];
+  const uniqueDeletedFiles = [...new Set(deletedFiles)];
+  if (uniqueChangedFiles.length === 0 && uniqueDeletedFiles.length === 0) return null;
   return repo.commit({
     message,
     authorName,
     authorEmail,
-    files: changedFiles,
-    deletedFiles
+    files: uniqueChangedFiles,
+    deletedFiles: uniqueDeletedFiles
   });
-}
-
-async function readFileOrNull(repo: GitRepo, path: string): Promise<string | null> {
-  try {
-    return await repo.readFile(path);
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -328,11 +349,18 @@ export async function syncEditBranch(
 
   // 4. Push nach origin/main
   onprogress?.({ message: 'Schiebe Änderungen zum Server...' });
+  onprogress?.({ message: 'LFS-Binaries hochladen...' });
+  await getFotoStore().flushPendingLfs();
   await repo.push({
     auth: { username: config.username, token: config.token },
     branch: 'main',
     onprogress
   });
+
+  // Squash-Merge committet explizit den Merge-Tree. Checkout aktualisiert
+  // danach den Arbeitsbaum, bevor die Stores daraus neu geladen werden.
+  onprogress?.({ message: 'Aktualisiere lokalen Stand...' });
+  await repo.checkoutBranch('main', true);
 
   // 5. Edit-Branch löschen
   onprogress?.({ message: 'Räume Edit-Branch auf...' });

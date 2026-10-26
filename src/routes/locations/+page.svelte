@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import LocationForm from '$lib/components/LocationForm.svelte';
   import Karte from '$lib/map/Karte.svelte';
   import { getLocationsStore } from '$lib/stores/locations.store.svelte';
@@ -7,6 +8,7 @@
   import type { Location } from '$lib/parser/types';
   import { persistStore } from '$lib/services/init';
   import { flattenLocationTree } from '$lib/locations/location-tree';
+  import { clearFormDraft, readFormDraft, writeFormDraft } from '$lib/services/form-drafts';
 
   const store = getLocationsStore();
   const assets = getAssetStore();
@@ -24,28 +26,58 @@
   });
   let showForm = $state(false);
   let editingLocation = $state<Location | undefined>();
+  let activeDraft = $state<{ locationId: string | null } | null>(null);
+  let restoredActiveDraft = $state(false);
   let selectedId = $state<string | null>(null);
   const selectedLocation = $derived(store.all.find((location) => location.id === selectedId));
 
+  onMount(() => {
+    activeDraft = readFormDraft<{ locationId: string | null }>('location:active');
+    restoredActiveDraft = true;
+  });
+
   $effect(() => {
-    if (!editMode.isEditing && showForm) resetForm();
+    if (!restoredActiveDraft || !editMode.isEditing || !activeDraft) return;
+    const resumeId = activeDraft.locationId;
+    if (resumeId && store.all.length === 0) return;
+    const location = resumeId ? store.all.find((item) => item.id === resumeId) : undefined;
+    if (resumeId && !location) {
+      clearFormDraft('location:active');
+      activeDraft = null;
+      return;
+    }
+    editingLocation = location;
+    selectedId = null;
+    showForm = true;
+    activeDraft = null;
+  });
+
+  $effect(() => {
+    if (!editMode.isEditing && showForm) {
+      activeDraft = readFormDraft<{ locationId: string | null }>('location:active');
+      showForm = false;
+      editingLocation = undefined;
+    }
   });
 
   function resetForm() {
     showForm = false;
     editingLocation = undefined;
+    clearFormDraft('location:active');
   }
 
   function startEdit(location: Location) {
     if (!editMode.isEditing) return;
     editingLocation = location;
     showForm = true;
+    writeFormDraft('location:active', { locationId: location.id ?? null });
   }
 
   function selectLocation(location: Location) {
     selectedId = location.id ?? null;
     editingLocation = undefined;
     showForm = false;
+    clearFormDraft('location:active');
   }
 
   function saveLocation(location: Location) {
@@ -72,7 +104,12 @@
     </div>
     {#if editMode.isEditing}
       <button
-        onclick={() => { selectedId = null; editingLocation = undefined; showForm = true; }}
+        onclick={() => {
+          selectedId = null;
+          editingLocation = undefined;
+          showForm = true;
+          writeFormDraft('location:active', { locationId: null });
+        }}
         class="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
       >
         + Neuer Standort
@@ -84,9 +121,11 @@
     {#key editingLocation?.id ?? selectedLocation?.id ?? 'new'}
       <LocationForm
         location={editingLocation ?? selectedLocation}
+        locations={store.all}
         disabled={!editMode.isEditing || !showForm}
         onSave={saveLocation}
         onCancel={resetForm}
+        draftKey={`location:${editingLocation?.id ?? 'new'}`}
       />
     {/key}
   {/if}

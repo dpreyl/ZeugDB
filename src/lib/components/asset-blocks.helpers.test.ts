@@ -41,6 +41,24 @@ describe('asset-blocks.helpers', () => {
     });
   });
 
+  it('setzt typfeste Komponentenwerte für jede erforderliche Instanz und überschreibt Assetwerte', () => {
+    const values = createBlockValues([{
+      compId: 'port',
+      min: 2,
+      max: 2,
+      fixedFields: { anschlusstyp: 'HDMI' }
+    }], {
+      port: {
+        '0': { anschlusstyp: 'SDI', bezeichnung: 'A' }
+      }
+    });
+
+    expect(values.port).toEqual({
+      '0': { anschlusstyp: 'HDMI', bezeichnung: 'A' },
+      '1': { anschlusstyp: 'HDMI' }
+    });
+  });
+
   it('zeigt Asset-Referenzen nur für erlaubte Typen und deren Untertypen', () => {
     const components: ComponentDefinition[] = [{
       id: 'port',

@@ -1,0 +1,5 @@
+extends: elektrogeraet
+name: Mikrowelle
+kategorie: Gastro-Küche
+feld: Fassungsvermögen (Liter), number, optional
+feld: Mikrowellenleistung (W), number, optional

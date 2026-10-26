@@ -1,0 +1,6 @@
+extends: elektrogeraet
+name: Monitor
+kategorie: Büro
+icon: monitor
+feld: Bildschirmdiagonale (Zoll), number, optional
+feld: Auflösung, text, optional

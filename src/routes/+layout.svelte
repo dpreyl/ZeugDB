@@ -2,6 +2,7 @@
   import { base } from '$app/paths';
   import '../app.css';
   import { initializeStore } from '$lib/services/init';
+  import { initFotoService } from '$lib/services/foto-init';
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
   import {
     loadGitConfig,
@@ -15,6 +16,10 @@
   let { children }: { children?: any } = $props();
 
   initializeStore();
+  // Foto-Store lazily initialisieren (Git-Repo + LFS falls konfiguriert)
+  initFotoService().catch(() => {
+    // Foto-Service optional — ignorieren wenn Git nicht initialisiert
+  });
 
   const editMode = getEditMode();
   const syncMeta = getSyncMeta();
@@ -23,15 +28,16 @@
   let progress = $state<string | null>(null);
   let error = $state<string | null>(null);
 
-  // Service Worker für Offline-Nutzung sofort registrieren
+  // Der Offline-Service-Worker darf in Entwicklung keine veralteten Vite-Module cachen.
   if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-    navigator.serviceWorker.register(`${base}/sw.js`, { scope: `${base}/`, type: 'module' })
-      .then(reg => {
-        console.log('[SW] registriert:', reg.scope);
-      })
-      .catch(err => {
-        console.warn('[SW] Registrierung fehlgeschlagen:', err);
-      });
+    if (import.meta.env.DEV) {
+      navigator.serviceWorker.getRegistrations().then(async registrations => {
+        await Promise.all(registrations.map(registration => registration.unregister()));
+        if (registrations.length && navigator.serviceWorker.controller) {
+          window.location.reload();
+        }
+      }).catch(err => console.warn('[SW] Dev-Registrierung konnte nicht entfernt werden:', err));
+    }
   }
 
   async function handleEnterEditMode() {

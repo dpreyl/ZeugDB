@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import AssetTypeFields from './AssetTypeFields.svelte';
 import type { FieldType } from '$lib/parser/types';
 
@@ -28,6 +28,90 @@ describe('AssetTypeFields', () => {
 
     await fireEvent.input(screen.getByLabelText(/Leistung/), { target: { value: '5000' } });
     expect(values.Leistung).toBe('5000');
+  });
+
+  it('renders image fields as image uploads and reports the selected file', async () => {
+    const onImageSelect = vi.fn();
+    const imageField: FieldType = {
+      nr: 0,
+      name: 'Typenschild',
+      art: 'image',
+      optionen: null,
+      pflicht: false,
+      sensitiv: false
+    };
+    const file = new File(['image'], 'typenschild.png', { type: 'image/png' });
+
+    render(AssetTypeFields, {
+      props: {
+        fields: [imageField],
+        values: { Typenschild: 'fotos/asset-1/photo-0.png' },
+        editable: true,
+        onValueChange: () => {},
+        onImageSelect,
+        imageUrls: { 'fotos/asset-1/photo-0.png': 'blob:preview' }
+      }
+    });
+
+    expect(screen.getByRole('img', { name: 'Typenschild' }).getAttribute('src')).toBe('blob:preview');
+    expect(screen.getByLabelText('Bild für Typenschild').getAttribute('capture')).toBe('environment');
+    await fireEvent.change(screen.getByLabelText('Bild für Typenschild'), { target: { files: [file] } });
+    expect(onImageSelect).toHaveBeenCalledWith('Typenschild', file);
+  });
+
+  it('safely finishes an image selection after the field unmounts', async () => {
+    let finishSave!: () => void;
+    const onImageSelect = vi.fn(() => new Promise<void>((resolve) => {
+      finishSave = resolve;
+    }));
+    const imageField: FieldType = {
+      nr: 0,
+      name: 'Typenschild',
+      art: 'image',
+      optionen: null,
+      pflicht: false,
+      sensitiv: false
+    };
+    const { unmount } = render(AssetTypeFields, {
+      props: {
+        fields: [imageField],
+        values: {},
+        editable: true,
+        onValueChange: () => {},
+        onImageSelect
+      }
+    });
+
+    await fireEvent.change(screen.getByLabelText('Bild für Typenschild'), {
+      target: { files: [new File(['image'], 'typenschild.png', { type: 'image/png' })] }
+    });
+    unmount();
+    finishSave();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onImageSelect).toHaveBeenCalledOnce();
+  });
+
+  it('requires a file for an empty required image field', () => {
+    const imageField: FieldType = {
+      nr: 0,
+      name: 'Übersicht',
+      art: 'image',
+      optionen: null,
+      pflicht: true,
+      sensitiv: false
+    };
+
+    render(AssetTypeFields, {
+      props: {
+        fields: [imageField],
+        values: {},
+        editable: true,
+        onValueChange: () => {}
+      }
+    });
+
+    expect((screen.getByLabelText('Bild für Übersicht') as HTMLInputElement).required).toBe(true);
   });
 
   it('shows values as read-only text when editing is disabled', () => {
@@ -94,4 +178,5 @@ describe('AssetTypeFields', () => {
 
     expect(screen.queryByRole('option', { name: 'Projektor · asset-1' })).toBeNull();
   });
+
 });

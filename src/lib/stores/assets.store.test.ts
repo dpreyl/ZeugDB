@@ -72,6 +72,15 @@ describe('AssetStore fields', () => {
     expect(fields.notizen).toBe('Test');
   });
 
+  it('erhöht die Feldversion, damit abgeleitete Asset-Listen Feldänderungen erkennen', () => {
+    store.add({ id: 'a1', type: 'projektor', location: null, erstellt: null, geaendert: null });
+    const before = store.fieldsVersion;
+
+    store.setFields('a1', { bezeichnung: 'Konferenzprojektor' });
+
+    expect(store.fieldsVersion).toBeGreaterThan(before);
+  });
+
   it('speichert Blockinstanzen eines Assets und klont die Rückgabe', () => {
     const id = store.createAsset({
       type: 'projektor',
@@ -104,6 +113,26 @@ describe('AssetStore fields', () => {
     expect(id).toBeDefined();
     expect(store.findById(id)).toBeDefined();
     expect(store.getField(id, 'hersteller')).toBe('BenQ');
+  });
+
+  it('erstellt Asset mit einer vorab reservierten ID für Uploads vor dem Speichern', () => {
+    const id = store.reserveAssetId();
+    const createdId = store.createAsset({
+      id,
+      type: 'kamera',
+      fields: { typenschild: `fotos/${id}/photo-0.jpg` }
+    });
+
+    expect(id).toMatch(/^asset_\d+_[a-z0-9]+$/);
+    expect(createdId).toBe(id);
+    expect(store.getField(id, 'typenschild')).toBe(`fotos/${id}/photo-0.jpg`);
+  });
+
+  it('verhindert doppelte vorab reservierte Asset-IDs', () => {
+    store.createAsset({ id: 'asset_draft_123', type: 'kamera' });
+
+    expect(() => store.createAsset({ id: 'asset_draft_123', type: 'kamera' }))
+      .toThrow("Asset 'asset_draft_123' existiert bereits");
   });
 
   it('updateAsset aktualisiert Asset und Felder', () => {

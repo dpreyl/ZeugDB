@@ -1,0 +1,6 @@
+extends: elektrogeraet
+name: Verlängerungsleitung / Kabeltrommel
+kategorie: Elektroverteilung
+feld: Leitungstyp, dropdown, Verlängerungsleitung|Kabeltrommel|Mehrfachsteckdose, optional
+feld: Leitungslänge (m), number, optional
+feld: Leitungsquerschnitt (mm²), number, optional

@@ -1,0 +1,5 @@
+extends: elektrogeraet
+name: Hochdruckreiniger
+kategorie: Gelände/Wartung
+feld: Betriebsdruck (bar), number, optional
+feld: Wasseranschluss, boolean, optional

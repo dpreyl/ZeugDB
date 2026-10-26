@@ -1,5 +1,4 @@
 name: Basis
 kategorie: allgemein
 feld: id, uuid, pflicht
-feld: type, text, pflicht
 feld: zustand, dropdown, neu|einwandfrei|defekt|in_reparatur|verschrottet, optional

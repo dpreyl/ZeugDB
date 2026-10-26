@@ -22,6 +22,9 @@ export function serializeType(type: TypeDefinition): string {
 
   for (const block of type.blocks) {
     lines.push(`block: ${block.compId}, ${block.min}, ${block.max}`);
+    for (const [fieldName, value] of Object.entries(block.fixedFields ?? {})) {
+      lines.push(`block-feld: ${block.compId}, ${fieldName}, ${value}`);
+    }
   }
 
   return lines.join('\n');

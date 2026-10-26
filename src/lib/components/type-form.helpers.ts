@@ -30,16 +30,24 @@ export function createTypeDraft(type: TypeDefinition | null): TypeFormDraft {
     extendsId: type?.extends ?? '',
     kategorie: type?.kategorie ?? '',
     icon: type?.icon ?? '',
-    fields: type?.fields.map(field => ({
-      name: field.name,
-      art: field.art,
-      optionen: field.optionen
-        ? field.optionen.split(field.optionen.includes('|') ? '|' : ',').map(option => option.trim()).filter(Boolean)
-        : [],
-      pflicht: field.pflicht,
-      sensitiv: field.sensitiv
-    })) ?? [],
-    blocks: type?.blocks.map(block => ({ ...block })) ?? []
+    fields: type?.fields
+      .filter(field => {
+        const name = field.name.trim().toLocaleLowerCase();
+        return name !== 'type' && name !== 'bezeichnung';
+      })
+      .map(field => ({
+        name: field.name,
+        art: field.art,
+        optionen: field.optionen
+          ? field.optionen.split(field.optionen.includes('|') ? '|' : ',').map(option => option.trim()).filter(Boolean)
+          : [],
+        pflicht: field.pflicht,
+        sensitiv: field.sensitiv
+      })) ?? [],
+    blocks: type?.blocks.map(block => ({
+      ...block,
+      ...(block.fixedFields && { fixedFields: { ...block.fixedFields } })
+    })) ?? []
   };
 }
 
@@ -81,6 +89,12 @@ export function buildTypeDefinition(
   if (new Set(normalizedNames.filter(Boolean)).size !== normalizedNames.filter(Boolean).length) {
     errors.push('Feldnamen müssen eindeutig sein.');
   }
+  if (normalizedNames.includes('type')) {
+    errors.push('„type“ ist reserviert; der Asset-Typ wird beim Anlegen ausgewählt.');
+  }
+  if (normalizedNames.includes('bezeichnung')) {
+    errors.push('„bezeichnung“ ist reserviert; die Asset-Bezeichnung ist ein festes Asset-Feld.');
+  }
 
   for (const field of draft.fields) {
     if (field.art !== 'dropdown' && field.art !== 'auswahl') continue;
@@ -97,7 +111,7 @@ export function buildTypeDefinition(
 
   const blockIds = draft.blocks.map(block => block.compId.trim().toLocaleLowerCase());
   if (blockIds.some(blockId => !blockId)) {
-    errors.push('Bitte gib für jeden Baustein eine ID ein.');
+    errors.push('Bitte wähle für jeden Baustein eine Komponente aus.');
   }
   if (new Set(blockIds.filter(Boolean)).size !== blockIds.filter(Boolean).length) {
     errors.push('Baustein-IDs müssen eindeutig sein.');
@@ -126,7 +140,8 @@ export function buildTypeDefinition(
   const blocks: BlockDef[] = draft.blocks.map(block => ({
     compId: block.compId.trim(),
     min: block.min,
-    max: block.max
+    max: block.max,
+    ...(Object.keys(block.fixedFields ?? {}).length > 0 && { fixedFields: { ...block.fixedFields } })
   }));
 
   return {

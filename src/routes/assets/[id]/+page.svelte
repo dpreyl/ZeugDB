@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount, untrack } from 'svelte';
   import { base } from '$app/paths';
+  import { goto } from '$app/navigation';
   import type { PageData } from './$types';
   import { getAssetStore } from '$lib/stores/assets.store.svelte';
   import { getLocationsStore } from '$lib/stores/locations.store.svelte';
@@ -9,20 +11,46 @@
   import AssetTypeFields from '$lib/components/AssetTypeFields.svelte';
   import AssetBlocks from '$lib/components/AssetBlocks.svelte';
   import { resolveAssetTypeFields } from '$lib/components/asset-type-fields';
-  import { resolveAssetTypeBlocks, type AssetBlockValues } from '$lib/components/asset-blocks.helpers';
+  import { createBlockValues, resolveAssetTypeBlocks, type AssetBlockValues } from '$lib/components/asset-blocks.helpers';
+  import { getFotoStore } from '$lib/stores/fotos.store.svelte';
+  import { initFotoService } from '$lib/services/foto-init';
   import { persistStore } from '$lib/services/init';
+  import { photoRoleField, setPhotoRolePath, type PhotoRole } from '$lib/components/asset-photo.helpers';
+  import { clearFormDraft, readFormDraft, writeFormDraft } from '$lib/services/form-drafts';
 
   let { data }: { data: PageData } = $props();
-  let saved = $state(false);
-  let deleted = $state(false);
-  let fieldValues = $state<Record<string, string>>({});
-  let blockValues = $state<AssetBlockValues>({});
-
   const assets = getAssetStore();
   const components = getComponentsStore();
   const locations = getLocationsStore();
   const types = getTypesStore();
   const editMode = getEditMode();
+  let designation = $state('');
+  let fieldValues = $state<Record<string, string>>({});
+  let blockValues = $state<AssetBlockValues>({});
+  let fotoError = $state('');
+  let uploading = $state(false);
+  let uploadingImageFields = $state<string[]>([]);
+  let fotoUrls = $state<Record<string, string>>({});
+  let restoringDraft = $state(true);
+  let draftCompleted = false;
+  const initialAssetId = untrack(() => data.id);
+  const draftKey = `asset:edit:${initialAssetId}`;
+
+  let fotos = $derived.by(() => {
+    assets.fieldsVersion;
+    return (assets.getField(data.id, 'fotos') || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+  });
+  let fotoRollenzuordnung = $derived.by(() => {
+    assets.fieldsVersion;
+    return {
+      typenschild: assets.getField(data.id, photoRoleField('typenschild')) || '',
+      uebersicht: assets.getField(data.id, photoRoleField('uebersicht')) || ''
+    };
+  });
+
   const typeFields = $derived(resolveAssetTypeFields(data.type, types.all));
   const typeBlocks = $derived(resolveAssetTypeBlocks(data.type, types.all));
   const assetOptions = $derived(assets.all.map(asset => {
@@ -37,10 +65,20 @@
   }));
 
   $effect(() => {
+    designation = String(data.bezeichnung ?? '');
     fieldValues = Object.fromEntries(
       typeFields.map(field => [field.name, String(data[field.name] ?? '')])
     );
-    blockValues = data.blocks ?? {};
+    blockValues = createBlockValues(typeBlocks, data.blocks ?? {});
+  });
+
+  $effect(() => {
+    if (restoringDraft || draftCompleted) return;
+    writeFormDraft(draftKey, {
+      designation,
+      fieldValues: { ...fieldValues },
+      blockValues: JSON.parse(JSON.stringify(blockValues))
+    });
   });
 
   function updateField(name: string, value: string) {
@@ -49,30 +87,172 @@
 
   function handleSave(event: SubmitEvent) {
     event.preventDefault();
-    if (!editMode.isEditing) return;
+    if (!editMode.isEditing || !designation.trim()) return;
     const fd = new FormData(event.currentTarget as HTMLFormElement);
     const fields: Record<string, string> = {};
     for (const [key, value] of fd.entries()) {
       if (key !== 'type' && key !== 'location') fields[key] = value as string;
     }
+    fields.fotos = assets.getField(data.id, 'fotos') ?? '';
     assets.updateAsset(data.id, {
       fields,
       blocks: blockValues,
       location: String(fd.get('location') ?? '') || null
     });
+    draftCompleted = true;
+    clearFormDraft(draftKey);
     persistStore();
-    saved = true;
-    setTimeout(() => saved = false, 2000);
+    goto(`${base}/`);
   }
 
   function handleDelete() {
     if (!editMode.isEditing) return;
     if (!confirm('Asset ' + data.id + ' wirklich löschen?')) return;
-    const store = getAssetStore();
-    store.remove(data.id);
+    if (!assets.remove(data.id)) return;
+    draftCompleted = true;
+    clearFormDraft(draftKey);
     persistStore();
-    deleted = true;
+    goto(`${base}/`);
   }
+
+  async function handleFotoUpload(event: Event, role: PhotoRole) {
+    if (!editMode.isEditing) return;
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    fotoError = '';
+    uploading = true;
+
+    try {
+      await initFotoService();
+      const fotoStore = getFotoStore();
+      if (fotoStore.fehle) {
+        fotoError = 'Foto-Service nicht verfügbar (kein Git-Repo initialisiert)';
+        return;
+      }
+      const arrayBuffer = await file.arrayBuffer();
+      const pfad = await fotoStore.uploadFoto(data.id, new Uint8Array(arrayBuffer), file.type);
+      fotoUrls = {
+        ...fotoUrls,
+        [pfad]: URL.createObjectURL(new Blob([arrayBuffer], { type: file.type }))
+      };
+      // Foto-Referenz in Asset-Felder speichern
+      const assetStore = getAssetStore();
+      const liste = [...new Set([...fotos, pfad])];
+      const fields = setPhotoRolePath(assetStore.getFields(data.id), role, pfad);
+      assetStore.setFields(data.id, { ...fields, fotos: liste.join(',') });
+      persistStore();
+    } catch (err) {
+      fotoError = err instanceof Error ? err.message : 'Upload fehlgeschlagen';
+    } finally {
+      uploading = false;
+      input.value = '';
+    }
+  }
+
+  async function handleFotoLoeschen(index: number) {
+    if (!editMode.isEditing) return;
+    const pfad = fotos[index];
+    if (!pfad) return;
+    try {
+      const fotoStore = getFotoStore();
+      await fotoStore.loescheFoto(pfad);
+      const url = fotoUrls[pfad];
+      if (url) URL.revokeObjectURL(url);
+      const { [pfad]: _removedUrl, ...remainingUrls } = fotoUrls;
+      fotoUrls = remainingUrls;
+      const assetStore = getAssetStore();
+      const neueListe = fotos.filter((_, i) => i !== index);
+      const roleFields: Record<string, string> = {};
+      if (fotoRollenzuordnung.typenschild === pfad) roleFields[photoRoleField('typenschild')] = '';
+      if (fotoRollenzuordnung.uebersicht === pfad) roleFields[photoRoleField('uebersicht')] = '';
+      const imageFields = Object.fromEntries(
+        typeFields
+          .filter(field => field.art === 'image' && assetStore.getField(data.id, field.name) === pfad)
+          .map(field => [field.name, ''])
+      );
+      for (const field of typeFields) {
+        if (field.art === 'image' && fieldValues[field.name] === pfad) fieldValues[field.name] = '';
+      }
+      assetStore.setFields(data.id, { fotos: neueListe.join(','), ...roleFields, ...imageFields });
+      persistStore();
+    } catch (err) {
+      fotoError = err instanceof Error ? err.message : 'Löschen fehlgeschlagen';
+    }
+  }
+
+  async function handleTypeImageSelect(name: string, file: File) {
+    if (!editMode.isEditing || uploadingImageFields.includes(name)) return;
+    fotoError = '';
+    uploadingImageFields = [...uploadingImageFields, name];
+    try {
+      await initFotoService();
+      const fotoStore = getFotoStore();
+      if (fotoStore.fehle) throw new Error('Foto-Service nicht verfügbar (kein Git-Repo initialisiert)');
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const path = await fotoStore.uploadFoto(data.id, bytes, file.type);
+      const preview = URL.createObjectURL(new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as BlobPart], { type: file.type }));
+      fotoUrls = { ...fotoUrls, [path]: preview };
+      fieldValues[name] = path;
+      const currentFields = getAssetStore().getFields(data.id);
+      const photoPaths = [...new Set([...(currentFields.fotos || '').split(',').map(value => value.trim()).filter(Boolean), path])];
+      getAssetStore().setFields(data.id, { [name]: path, fotos: photoPaths.join(',') });
+      persistStore();
+    } catch (err) {
+      fotoError = err instanceof Error ? err.message : 'Bild-Upload fehlgeschlagen';
+    } finally {
+      uploadingImageFields = uploadingImageFields.filter(field => field !== name);
+    }
+  }
+
+  onMount(() => {
+    const draft = readFormDraft<{
+      designation: string;
+      fieldValues: Record<string, string>;
+      blockValues: AssetBlockValues;
+    }>(draftKey);
+    if (draft) {
+      designation = draft.designation;
+      fieldValues = draft.fieldValues;
+      blockValues = draft.blockValues;
+    }
+    restoringDraft = false;
+
+    let cancelled = false;
+    const loadPreviews = async () => {
+      try {
+        await initFotoService();
+        const fotoStore = getFotoStore();
+        if (fotoStore.fehle) return;
+        const typeImagePaths = typeFields
+          .filter(field => field.art === 'image')
+          .map(field => String(data[field.name] ?? ''))
+          .filter(Boolean);
+        for (const path of new Set([...fotos, ...typeImagePaths])) {
+          try {
+            const { data: raw, mimeType } = await fotoStore.ladeFoto(path);
+            if (cancelled) return;
+            const bytes = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
+            fotoUrls = {
+              ...fotoUrls,
+              [path]: URL.createObjectURL(new Blob([bytes as BlobPart], { type: mimeType }))
+            };
+          } catch {
+            // Fehlende/offline nicht verfügbare Vorschauen bleiben als Dateiname sichtbar.
+          }
+        }
+      } catch {
+        // Fotos sind optional, falls das Git-Repo noch nicht initialisiert ist.
+      }
+    };
+
+    void loadPreviews();
+    return () => {
+      cancelled = true;
+      Object.values(fotoUrls).forEach(URL.revokeObjectURL);
+    };
+  });
 </script>
 
 <form class="max-w-2xl space-y-6" onsubmit={handleSave}>
@@ -80,16 +260,6 @@
     <a href="{base}/" class="text-sm text-gray-500 hover:text-gray-700">← Zurück</a>
     <h2 class="text-xl font-semibold text-gray-900">Asset {data.id}</h2>
   </div>
-
-  {#if deleted}
-    <div class="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800" role="status">
-      Asset gelöscht. <a href="{base}/" class="underline">Zurück zur Übersicht</a>
-    </div>
-  {:else if saved}
-    <div class="p-3 bg-green-50 border border-green-200 rounded-md text-sm text-green-800" role="status">
-      ✓ Gespeichert (noch nicht im Git-Repo)
-    </div>
-  {/if}
 
   <div class="bg-white rounded-lg shadow border border-gray-200 p-6 space-y-4">
     {#if !editMode.isEditing}
@@ -99,6 +269,10 @@
       </div>
       <p class="text-sm text-gray-500" role="status">Zum Bearbeiten den Schreibmodus aktivieren.</p>
       <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+        <div>
+          <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Bezeichnung</dt>
+          <dd class="mt-1 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-900">{designation || 'Ohne Bezeichnung'}</dd>
+        </div>
         <div>
           <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Typ</dt>
           <dd class="mt-1 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-900">{data.type}</dd>
@@ -121,6 +295,7 @@
         types={types.all}
         excludedAssetId={data.id}
         onValueChange={updateField}
+        imageUrls={fotoUrls}
       />
       <AssetBlocks
         definitions={typeBlocks}
@@ -135,6 +310,10 @@
     {:else}
       <fieldset class="m-0 min-w-0 space-y-4 border-0 p-0">
         <div>
+          <label for="bezeichnung" class="block text-sm font-medium text-gray-700 mb-1">Bezeichnung</label>
+          <input id="bezeichnung" name="bezeichnung" bind:value={designation} required maxlength="160" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+        </div>
+        <div>
           <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Typ</p>
           <p class="mt-1 text-sm text-gray-900">{data.type}</p>
           <p class="mt-1 text-xs text-gray-500">Der Asset-Typ kann nach dem Anlegen nicht geändert werden.</p>
@@ -148,6 +327,9 @@
           types={types.all}
           excludedAssetId={data.id}
           onValueChange={updateField}
+          onImageSelect={handleTypeImageSelect}
+          imageUrls={fotoUrls}
+          uploadingImageFields={uploadingImageFields}
         />
         <AssetBlocks
           definitions={typeBlocks}
@@ -180,6 +362,104 @@
           Löschen
         </button>
       </div>
+    {/if}
+  </div>
+
+  <!-- Foto-Bereich -->
+  <div class="bg-white rounded-lg shadow border border-gray-200 p-6 space-y-4">
+    <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Gerätefotos</h3>
+    <p class="text-sm text-gray-600">
+      Für die Geräteprüfung ein lesbares Foto des Typenschilds und ein Übersichtsbild zuordnen.
+      Die Bilder werden im Git-LFS-Repository gespeichert.
+    </p>
+
+    {#if fotoError}
+      <div class="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800" role="alert">
+        {fotoError}
+      </div>
+    {/if}
+
+    {#if editMode.isEditing}
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="block text-sm font-medium text-gray-700">
+          Typenschild
+          <span class="mt-1 block text-xs font-normal text-gray-500">
+            {fotoRollenzuordnung.typenschild ? 'Bild zugeordnet' : 'Noch kein Bild zugeordnet'}
+          </span>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            capture="environment"
+            disabled={uploading}
+            onchange={(event) => handleFotoUpload(event, 'typenschild')}
+            aria-label="Typenschild-Foto hochladen"
+            class="mt-2 block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+          />
+        </label>
+        <label class="block text-sm font-medium text-gray-700">
+          Übersichtsbild
+          <span class="mt-1 block text-xs font-normal text-gray-500">
+            {fotoRollenzuordnung.uebersicht ? 'Bild zugeordnet' : 'Noch kein Bild zugeordnet'}
+          </span>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            capture="environment"
+            disabled={uploading}
+            onchange={(event) => handleFotoUpload(event, 'uebersicht')}
+            aria-label="Übersichtsbild hochladen"
+            class="mt-2 block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+          />
+        </label>
+      </div>
+      <div class="flex items-center gap-3">
+        {#if uploading}
+          <span class="text-sm text-gray-500 animate-pulse" role="status">Foto wird gespeichert…</span>
+        {/if}
+      </div>
+    {:else}
+      <p class="text-sm text-gray-500">Zum Hinzufügen oder Löschen von Fotos den Schreibmodus aktivieren.</p>
+    {/if}
+
+    <!-- Foto-Galerie -->
+    {#if fotos.length > 0}
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {#each fotos as pfad, i}
+          <div class="relative group rounded-lg border border-gray-200 overflow-hidden bg-gray-50">
+            {#if fotoUrls[pfad]}
+              <img
+                src={fotoUrls[pfad]}
+                alt={fotoRollenzuordnung.typenschild === pfad ? 'Typenschild-Foto' : fotoRollenzuordnung.uebersicht === pfad ? 'Übersichtsbild' : `Zusatzfoto ${i + 1}`}
+                class="h-28 w-full object-contain p-1"
+              />
+            {:else}
+              <div class="flex items-center justify-center h-28 text-xs text-gray-400 p-2">
+                {pfad.split('/').pop()}
+              </div>
+            {/if}
+            {#if editMode.isEditing}
+              <button
+                type="button"
+                onclick={() => handleFotoLoeschen(i)}
+                class="absolute top-1 right-1 p-1 rounded bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700 text-xs"
+                title="Foto löschen"
+                aria-label="Foto {i + 1} löschen"
+              >
+                ✕
+              </button>
+            {/if}
+            <span class="absolute bottom-1 left-1 px-1.5 py-0.5 text-[10px] bg-gray-800 bg-opacity-70 text-white rounded truncate max-w-[80%]">
+              {fotoRollenzuordnung.typenschild === pfad
+                ? 'Typenschild'
+                : fotoRollenzuordnung.uebersicht === pfad
+                  ? 'Übersichtsbild'
+                  : pfad.split('/').pop()}
+            </span>
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <p class="text-sm text-gray-400 italic">Noch keine Fotos hochgeladen.</p>
     {/if}
   </div>
 </form>

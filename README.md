@@ -12,11 +12,19 @@ Offline-fähige Inventar-Verwaltung als Progressive Web App (PWA).
 - **Service Worker** — Offline-Caching der App-Assets und angezeigter OSM-Kacheln
 - **localStorage** — Persistenz von Asset-Daten zwischen Sessions
 
+Beim App-Start werden vorhandene lokale Daten geladen; es werden keine
+Demo-Daten angelegt. Bekannte alte Demo-Typen und Test-Assets sowie ungenutzte
+Test-Standorte werden einmalig entfernt. Die Asset-Liste liest direkt aus dem
+reaktiven Store und zeigt deshalb auch Daten an, die nach dem ersten Seitenaufbau
+geladen werden.
+
 ## Standorte und Karte
 
 Standorte können als **Punkt**, **Raum** (mindestens drei Eckpunkte) oder
-**Leitung** (mindestens zwei Wegpunkte) erfasst werden. Die Koordinaten lassen
-sich manuell eingeben, über die Standortfreigabe des Browsers übernehmen oder
+**Leitung** (mindestens zwei Wegpunkte) erfasst werden. Koordinaten sind optional
+und können später ergänzt werden; sobald Koordinaten eingetragen werden, müssen
+Punkte vollständig sein und Räume bzw. Leitungen ihre Mindestanzahl erfüllen.
+Die Koordinaten lassen sich manuell eingeben, über die Standortfreigabe des Browsers übernehmen oder
 für jeden einzelnen Punkt auf der Karte bestimmen. Dabei wird die Karte unter
 einer festen Nadel verschoben und der Ausschnitt kann zum präzisen Ausrichten
 vergrößert werden; so muss die Nadel bei Touch-Eingabe nicht direkt getroffen
@@ -31,6 +39,11 @@ lokalen Cache jederzeit zugunsten von Speicherplatz leeren. Beim ersten Aufruf e
 Kartenausschnitts ist daher eine Internetverbindung erforderlich. Die
 Standortdaten selbst bleiben in der App gespeichert. Die GPS-Funktion benötigt
 die Standortfreigabe und einen sicheren Browser-Kontext (HTTPS oder localhost).
+Die Standort-ID wird beim Anlegen automatisch aus dem Namen gebildet; bei
+Namensgleichheit wird eine freie Nummer angehängt. Ein übergeordneter Standort
+kann aus den vorhandenen Standorten ausgewählt werden. Der eigene Standort und
+seine Unterstandorte stehen dabei nicht zur Auswahl, damit keine
+Selbstzuordnungen oder Zyklen entstehen.
 
 ## Schreibmodus
 
@@ -57,14 +70,36 @@ der `.type`-Dateisyntax ist dafür nicht erforderlich. Die Typ-ID wird beim
 Anlegen automatisch aus dem Namen erzeugt. Die Felddefinitionen eines Typs
 bestimmen die Eingabefelder beim Anlegen und Bearbeiten der zugehörigen Assets;
 geerbte Felder werden ebenfalls angezeigt. Werte benutzerdefinierter Felder
-werden in der `.asset`-Datei gespeichert.
+werden in der `.asset`-Datei gespeichert. Der Feldtyp **Bild** zeigt eine
+Dateiauswahl samt Vorschau; bei der Neuanlage werden ausgewählte Bilder vor
+dem Asset-Eintrag über Git LFS hochgeladen und als Pfad im Feld gespeichert.
+Ungespeicherte Eingaben in Asset-, Typ- und Standortformularen werden lokal im
+Browser als Entwurf gesichert und nach einem Neuladen wiederhergestellt.
+Ausgewählte Bilder eines neuen Assets liegen dafür vorübergehend in IndexedDB;
+nach erfolgreichem Speichern oder Abbrechen wird der Entwurf gelöscht. Die
+Wiederherstellung gilt für dasselbe Browserprofil und setzt voraus, dass der
+Browser seinen lokalen Speicher nicht entfernt.
 
-Wiederholbare Bausteine wie Anschlüsse werden einschließlich ihrer Felder im
-Typeditor definiert und als `.comp`-Dateien gespeichert. Die Feldwerte eines
-Assets erscheinen beim Anlegen und Bearbeiten als wiederholbare Gruppen und
-werden in der `.asset`-Datei abgelegt. Der Feldtyp **Asset-Referenz** zeigt
+Wiederverwendbare Komponenten wie Anschlüsse werden separat auf der Seite
+**Typen** definiert; ihre Felder liegen in `.comp`-Dateien. Ein Asset-Typ
+verweist im Typeditor nur auf eine vorhandene Komponente und legt deren
+Mindest- und Höchstanzahl fest. Typen können für Komponentenfelder zusätzlich
+feste Werte vorgeben, etwa `HDMI` für den Anschlusstyp aller Ports eines
+HDMI-Kabels. Diese Felder werden pro Asset-Instanz vorbelegt und sind dort
+schreibgeschützt; nicht festgelegte Komponentenfelder bleiben am Asset
+bearbeitbar. Die übrigen Felder werden ausschließlich an der Komponente
+gepflegt, erscheinen bei Assets als wiederholbare Gruppen und werden in der
+`.asset`-Datei abgelegt. Der Feldtyp **Asset-Referenz** zeigt
 Assets der angegebenen kompatiblen Typen einschließlich ihrer Untertypen zur
 Auswahl an; ohne Typ-Einschränkung stehen alle Assets zur Verfügung.
+
+Jedes Asset erhält unabhängig von seinem Typ eine erforderliche **Bezeichnung**.
+Sie wird in der Asset-Übersicht anstelle der technischen ID angezeigt; Assets
+aus älteren Repositories ohne Bezeichnung sind dort als „Ohne Bezeichnung“
+markiert, bis ein Name eingetragen wird. Die Spalten Bezeichnung, Typ,
+Standort und Änderungsdatum besitzen Filter: Im Spaltenkopf lassen sich die
+vorhandenen Werte einzeln ein- oder ausblenden.
+
 ## Entwicklung
 
 ### Setup
@@ -75,6 +110,10 @@ docker compose up
 ```
 
 Die App ist unter `http://localhost:3000` erreichbar. Gitea auf `http://localhost:8929`.
+Der lokale Nginx-Proxy vor Gitea erlaubt die browserseitigen Git-LFS-`PUT`-
+Anfragen. Diese offene CORS-Konfiguration ist nur für die lokale Entwicklung
+gedacht; öffentlich erreichbare Instanzen müssen den App-Origin gezielt
+freigeben.
 
 ### Lokales Asset-Repository
 
@@ -84,7 +123,7 @@ Falls Gitea bereits läuft, lässt sich die idempotente Initialisierung erneut
 ausführen:
 
 ```bash
-docker compose up -d gitserver
+docker compose up -d gitserver gitserver-proxy
 docker compose run --rm gitea-init
 ```
 
@@ -95,6 +134,14 @@ standardmäßig aus dem Hostnamen der App gebildet:
 einen persönlichen Zugriffstoken mit Repository-Lese-/Schreibrechten und
 wähle **Klonen**. Danach können Assets, Typen und Standorte lokal bearbeitet
 und über **Sync** ins Repository übertragen werden.
+
+Fotos lassen sich auf Mobilgeräten über **Foto aufnehmen oder auswählen**
+direkt mit der Kamera erfassen. Dabei ist kein manuelles Speichern oder
+Auswählen einer zuvor abgelegten Datei erforderlich. Bis zur Synchronisierung
+bleibt das Bild lokal im Browser (IndexedDB) zwischengespeichert; **Sync**
+überträgt es anschließend als Git-LFS-Objekt. Für eigene Gitea-Server muss der
+Reverse Proxy zusätzlich Cross-Origin-`PUT`-Anfragen und die Header
+`Authorization`, `Content-Type` und `Transfer-Encoding` erlauben.
 
 Die benötigte Repo-Struktur und Dateiformate sind in
 [`gitea/repo-template/REPO_SETUP.md`](gitea/repo-template/REPO_SETUP.md)
@@ -144,18 +191,75 @@ docker compose up -d production
 ```
 
 Die App ist unter `http://<server-ip>:8080` erreichbar. Der nginx-Container
-serviert ausschließlich statische Dateien — kein Node.js, kein Backend.
+serviert ausschließlich statische Dateien — kein Node.js, kein Backend. Für
+Offline-Nutzung auf LAN-Geräten den HTTPS-Endpunkt nutzen.
 
 ### Offline-Nutzung auf Client-Geräten
 
-1. Browser auf `http://<server-ip>:8080` öffnen
-2. App wird automatisch gecached (Service Worker)
-3. Online angezeigte OpenStreetMap-Kacheln werden ebenfalls gespeichert;
-   offline verfügbar sind nur Kacheln, die zuvor geladen wurden
-4. Danach ist die App auch ohne Server-Verbindung nutzbar, solange der
-   Browser die IndexedDB-Daten behält
-5. Für Updates: einmalig mit dem Server verbinden, dann wird die neue
-   Version geladen
+Service Worker funktionieren nur in sicheren Browser-Kontexten: HTTPS oder
+`localhost` auf demselben Gerät. `http://<LAN-IP>:8080` ist kein sicherer
+Kontext. Auf dieser Adresse kann die App online aussehen, aber der Browser kann
+keine Offline-Navigation und keine installierbare PWA bereitstellen. Die
+`offline-https`-Compose-Services stellen dafür lokale HTTPS-Endpunkte mit einer
+Caddy-CA bereit.
+
+Für den Zugriff von Smartphone oder anderem LAN-Gerät:
+
+1. Setze im nicht eingecheckten `.env`-File die IP-Adresse des Docker-Hosts:
+
+   ```dotenv
+   APP_HOST=10.53.0.32
+   ```
+
+2. Starte die statische App und die HTTPS-Endpunkte:
+
+   ```bash
+   docker compose up -d --build production offline-https gitserver-proxy
+   ```
+
+   App: `https://<APP_HOST>:8443`; Git/LFS: `https://<APP_HOST>:9443`.
+   Die alte HTTP-Adresse auf Port 8080 bleibt für Tests erreichbar, ist aber
+   nicht für Offline-Nutzung von einem anderen Gerät geeignet.
+
+3. Exportiere das **öffentliche** lokale CA-Zertifikat. Unter Windows
+   PowerShell:
+
+   ```powershell
+   docker compose cp offline-https:/data/caddy/pki/authorities/local/root.crt "$env:TEMP\zeugdb-local-root.crt"
+   ```
+
+   Übertrage `zeugdb-local-root.crt` auf das Smartphone und installiere es als
+   CA-/Benutzerzertifikat in den Sicherheitseinstellungen. Nur das öffentliche
+   Zertifikat wird exportiert; der private CA-Schlüssel bleibt im Docker-Volume
+   `caddy_data`. Lösche die Zertifikatsdatei nach dem Installieren wieder.
+
+4. Öffne Chrome neu und lade `https://<APP_HOST>:8443` online. Bestätige, dass
+   die Seite ohne Zertifikatswarnung lädt; so kann der Service Worker die App
+   und alle SvelteKit-Routenmodule cachen. In **Einstellungen** sollte die
+   Git-URL automatisch `https://<APP_HOST>:9443/admin/ZeugDB` verwenden.
+   Klone das Repo auf diesem HTTPS-Ursprung, falls es dort noch nicht
+   initialisiert ist.
+
+Jeder Ursprung hat einen eigenen Browser-Speicher. Daten, die bisher unter
+`http://<APP_HOST>:8080` angelegt und noch nicht synchronisiert wurden, müssen
+vor dem Wechsel online synchronisiert werden. Die IndexedDB-Daten des alten
+HTTP-Ursprungs werden durch den Wechsel nicht gelöscht oder automatisch
+übertragen.
+
+Danach können Assets, Typen und Standorte auch ohne WLAN lokal angelegt,
+bearbeitet und gespeichert werden. Fotos bleiben bis zum nächsten Online-Sync
+in IndexedDB vorgemerkt; **Sync**, **Holen**, Git/LFS-Upload und erstmaliges
+Herunterladen eines LFS-Fotos benötigen weiterhin eine Verbindung zum
+Git-Server. Bereits geladene Fotos und Kartenausschnitte bleiben lokal
+verfügbar. Zum Installieren der PWA muss die HTTPS-Adresse ohne Zertifikats-
+warnung geöffnet sein.
+
+Der Offline-Test muss gegen die Produktionsausgabe laufen. `docker compose up`
+startet den Vite-Entwicklungsserver auf Port 3000; dort ist der Service Worker
+absichtlich deaktiviert, damit keine veralteten HMR-Module gecacht werden.
+Lokal auf demselben Rechner kannst du `http://localhost:8080` nutzen, da
+`localhost` als sicherer Browser-Kontext gilt. Auf Smartphone/LAN immer den
+vertrauenswürdigen HTTPS-Endpunkt verwenden.
 
 ### Karte
 
@@ -192,6 +296,39 @@ weggelassen. `build:pages` erzeugt zusätzlich `404.html` für dynamische
 Client-Routen und `.nojekyll`, damit GitHub Pages die `_app`-Dateien nicht
 ausfiltert.
 
+### GitHub Pages mit lokalem Gitea-Datenspeicher
+
+Der Workflow `.github/workflows/deploy-pages.yml` baut und veröffentlicht die App
+bei jedem Push auf `main` automatisch unter
+`https://<konto>.github.io/<repository>/`. Im GitHub-Repository muss unter
+**Settings → Pages → Build and deployment → Source** `GitHub Actions` ausgewählt
+sein. Der Workflow setzt den Repository-Unterpfad für den Build selbst.
+
+GitHub Pages liefert nur die App-Oberfläche aus; Assets, Typen, Standorte und
+Bilder bleiben im lokalen Gitea-Repository. In den App-Einstellungen muss als
+Git-URL die LAN-Adresse des Docker-Hosts stehen, z. B.
+`http://192.168.1.24:8929/admin/ZeugDB`. Der Browser des Handys muss mit demselben
+LAN verbunden sein. Setze in der Projekt-`.env` außerdem
+`GITEA_ROOT_URL=http://192.168.1.24:8929/`, damit von Gitea zurückgegebene
+Git-LFS-URLs ebenfalls auf den Docker-Host zeigen. Starte Gitea danach neu:
+
+```bash
+docker compose up -d --force-recreate gitserver gitserver-proxy
+```
+
+Die Git-/LFS-Anfragen sind Cross-Origin-Anfragen. Der lokale Proxy erlaubt sie
+für den Browserzugriff; in Chrome muss beim ersten Git-Zugriff gegebenenfalls
+die Berechtigung „Lokales Netzwerk“ für die GitHub-Pages-Site erteilt werden.
+Diese Chrome-Funktion benötigt eine aktuelle Version. Andere Browser können
+HTTP-Zugriffe von einer HTTPS-Seite auf eine LAN-Adresse blockieren; in diesem
+Fall ist für Gitea ein browserseitig vertrauenswürdiger HTTPS-Endpunkt nötig.
+GitHub Pages selbst läuft über öffentlich vertrauenswürdiges HTTPS und benötigt
+kein manuell installiertes Zertifikat.
+
+Die App speichert Änderungen weiterhin lokal im Browser, wenn sie offline ist.
+Gitea-Sync und noch nicht heruntergeladene LFS-Bilder benötigen eine Verbindung
+zum lokalen Netzwerk. GitHub Pages ist kein Ersatz für den Git-Datenspeicher.
+
 Für einen eigenen HTTP-Server genügt der normale Build:
 
 ```bash
@@ -220,8 +357,9 @@ gesetzt werden, wenn die App auf einem Unterpfad gehostet wird.
 │   │   ├── git/          # isomorphic-git Integration
 │   │   └── fs/           # Dateisystem-Abstraktion
 │   ├── routes/           # SvelteKit-Seiten
-│   └── app.html          # PWA-Manifest + Service Worker
-└── static/               # PWA-Assets (manifest.json, sw.js, tile-cache.js, Icons)
+│   ├── service-worker.js # Service Worker mit Offline-Cache für alle Routen
+│   └── app.html          # PWA-Manifest
+└── static/               # PWA-Assets (manifest.json, Kachelcache-Helfer, Icons)
 ```
 
 ## Tests

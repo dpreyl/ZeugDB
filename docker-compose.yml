@@ -10,7 +10,7 @@
 #
 # Ports (Entwicklung):
 #   3000      – PWA Development Server (Vite HMR)
-#   8929      – Gitea Web UI + HTTP API
+#   8929      – Gitea Web UI + HTTP API through local CORS proxy
 #   8930      – Gitea SSH (optional)
 #
 # Start:  docker compose up
@@ -20,14 +20,13 @@
 # =========================
 # Der production-Service baut die App als statische Site und serviert
 # sie via nginx. Er läuft auf dem Server, nicht auf den Client-Geräten.
-# Die Clients greifen per Browser zu (z.B. http://server-ip:8080).
-# Der Service Worker übernimmt Offline-Caching — kein lokaler Server
-# auf den Clients nötig.
+# Die Clients greifen per Browser zu. Für Offline-Nutzung auf anderen
+# Geräten den lokalen HTTPS-Proxy auf Port 8443 verwenden; HTTP funktioniert
+# nicht als Service-Worker-Origin über eine LAN-IP.
 #
 # Start:  docker compose up -d production
 # Port:   8080 (Host) → 80 (nginx)
-# Hinweis: In Produktion ggf. Port 80 statt 8080 nutzen und einen
-#          Reverse Proxy (traefik, caddy) vor nginx schalten.
+# HTTPS:  8443 (App) und 9443 (Git/LFS), APP_HOST in .env setzen
 
 services:
   app:
@@ -44,11 +43,11 @@ services:
       - GIT_SERVER_URL=http://gitserver:3000
     depends_on:
       - gitserver
+      - gitserver-proxy
 
   gitserver:
     image: gitea/gitea:latest
     ports:
-      - "8929:3000"
       - "8930:22"
     volumes:
       - gitea_data:/data
@@ -57,13 +56,18 @@ services:
       - USER_UID=1000
       - USER_GID=1000
       - GITEA__app__APP_NAME=ZeugDB Git Server
-      - GITEA__server__ROOT_URL=http://localhost:8929/
+      - GITEA__server__ROOT_URL=${GITEA_ROOT_URL:-http://localhost:8929/}
       - GITEA__database__DB_TYPE=sqlite3
       - GITEA__security__INSTALL_LOCK=true
       - GITEA__service__REGISTER_EMAIL_CONFIRM=false
       - GITEA__service__ENABLE_CAPTCHA=false
       - GITEA__server__LFS_START_SERVER=true
-      # Gitea smart HTTP uses this repository-specific CORS setting.
+      # LFS upload actions use the global CORS middleware for OPTIONS preflight.
+      - GITEA__cors__ENABLED=true
+      - GITEA__cors__ALLOW_DOMAIN=${GITEA_CORS_ALLOW_DOMAIN:-*}
+      - GITEA__cors__METHODS=GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS
+      - GITEA__cors__HEADERS=Authorization,Content-Type,Accept,Origin,Transfer-Encoding
+      # Gitea smart HTTP also uses this repository-specific CORS setting.
       - GITEA__repository__ACCESS_CONTROL_ALLOW_ORIGIN=${GITEA_CORS_ALLOW_DOMAIN:-*}
       - GITEA__log__MODE=console
       - GITEA__log__LEVEL=info
@@ -73,6 +77,18 @@ services:
       timeout: 3s
       retries: 10
       start_period: 15s
+    restart: unless-stopped
+
+  # Gitea's built-in Git CORS handler does not allow PUT preflights, which
+  # Git LFS needs for browser uploads. This dev-only proxy adds those headers.
+  gitserver-proxy:
+    image: nginx:alpine
+    ports:
+      - "8929:80"
+    volumes:
+      - ./gitea/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - gitserver
     restart: unless-stopped
 
   gitea-init:
@@ -102,6 +118,26 @@ services:
       - "8080:80"
     restart: unless-stopped
 
+  # Internal CA certificates provide a secure origin on a trusted LAN.
+  # Install Caddy's root.crt on each client device before using the PWA offline.
+  offline-https:
+    image: caddy:2-alpine
+    ports:
+      - "8443:8443"
+      - "9443:9443"
+    environment:
+      - APP_HOST=${APP_HOST:-localhost}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - production
+      - gitserver-proxy
+    restart: unless-stopped
+
 volumes:
   gitea_data:
   gitea_logs:
+  caddy_data:
+  caddy_config:

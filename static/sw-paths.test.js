@@ -7,7 +7,7 @@ describe('service worker paths', () => {
 
     expect(base).toBe('');
     expect(appPath(base, '/')).toBe('/');
-    expect(appPath(base, '/sw.js')).toBe('/sw.js');
+    expect(appPath(base, '/service-worker.js')).toBe('/service-worker.js');
   });
 
   it('keeps resources inside a GitHub Pages project scope', () => {

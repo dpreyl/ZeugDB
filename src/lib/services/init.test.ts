@@ -30,16 +30,111 @@ describe('init', () => {
     localStorage.clear();
   });
 
-  it('seedet Demo-Daten beim ersten Aufruf', () => {
+  it('füllt leere Stores beim ersten Aufruf nicht mit Demo-Daten', () => {
     initializeStore();
 
-    expect(getAssetStore().all.length).toBeGreaterThan(0);
-    expect(getTypesStore().all.length).toBeGreaterThan(0);
-    expect(getLocationsStore().all.length).toBeGreaterThan(0);
+    expect(getAssetStore().all).toEqual([]);
+    expect(getTypesStore().all).toEqual([]);
+    expect(getLocationsStore().all).toEqual([]);
+    expect(localStorage.getItem(ASSETS_KEY)).toBeNull();
+  });
+
+  it('entfernt alte eingebaute Test-Assets, lässt echte lokale Assets aber bestehen', () => {
+    const store = getAssetStore();
+    const demoId = store.createAsset({
+      type: 'projektor',
+      location: 'raum-101',
+      fields: {
+        hersteller: 'Sony',
+        modell: 'VPL-FHZ50',
+        seriennummer: 'S123456789',
+        inventarnummer: 'DEV-2024-0042',
+        zustand: 'einwandfrei'
+      }
+    });
+    const realId = store.createAsset({
+      type: 'projektor',
+      location: 'raum-101',
+      fields: { hersteller: 'Sony', modell: 'VPL-XW5000' }
+    });
+    getLocationsStore().add({ id: 'serverraum', name: 'Serverraum' });
+    getLocationsStore().add({ id: 'raum-101', name: 'Raum 101', eltern: 'serverraum' });
+    getLocationsStore().add({ id: 'raum-102', name: 'Raum 102', eltern: 'serverraum' });
+    persistStore();
+
+    resetAssetStore();
+    initializeStore();
+
+    expect(getAssetStore().findById(demoId)).toBeUndefined();
+    expect(getAssetStore().findById(realId)).toBeDefined();
+    expect(getLocationsStore().findById('raum-101')).toBeDefined();
+    expect(getLocationsStore().findById('raum-102')).toBeUndefined();
+  });
+
+  it('entfernt alte Demo-Typen, aber keine später angepassten Typen', () => {
+    getTypesStore().add({
+      id: 'projektor',
+      name: 'Projektor',
+      extends: '_base',
+      kategorie: 'gerät',
+      fields: [
+        { nr: 0, name: 'hersteller', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+        { nr: 1, name: 'modell', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+        { nr: 2, name: 'seriennummer', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+        { nr: 3, name: 'inventarnummer', art: 'text', optionen: null, pflicht: false, sensitiv: false },
+        { nr: 4, name: 'zustand', art: 'auswahl', optionen: 'neu,einwandfrei,defekt,in_reparatur,verschrottet', pflicht: true, sensitiv: false }
+      ],
+      blocks: []
+    });
+    getTypesStore().add({
+      id: 'hdmi-kabel',
+      name: 'Eigenes HDMI-Kabel',
+      extends: '_base',
+      kategorie: 'kabel',
+      fields: [],
+      blocks: []
+    });
+    persistStore();
+
+    resetAssetStore();
+    resetTypesStore();
+    initializeStore();
+
+    expect(getTypesStore().findById('projektor')).toBeUndefined();
+    expect(getTypesStore().findById('hdmi-kabel')?.name).toBe('Eigenes HDMI-Kabel');
+  });
+
+  it('entfernt alte Demo-Standorte, wenn keine echten Assets mehr darauf verweisen', () => {
+    getLocationsStore().add({ id: 'serverraum', name: 'Serverraum' });
+    getLocationsStore().add({ id: 'raum-101', name: 'Raum 101', eltern: 'serverraum' });
+    getLocationsStore().add({ id: 'raum-102', name: 'Raum 102', eltern: 'serverraum' });
+    persistStore();
+
+    resetLocationsStore();
+    initializeStore();
+
+    expect(getLocationsStore().all).toEqual([]);
+  });
+
+  it('behält alte Raumdatensätze, die noch echte Unterstandorte enthalten', () => {
+    getLocationsStore().add({ id: 'serverraum', name: 'Serverraum' });
+    getLocationsStore().add({ id: 'raum-101', name: 'Raum 101', eltern: 'serverraum' });
+    getLocationsStore().add({ id: 'unterraum', name: 'Unterraum', eltern: 'raum-101' });
+    persistStore();
+
+    resetLocationsStore();
+    initializeStore();
+
+    expect(getLocationsStore().findById('raum-101')).toBeDefined();
+    expect(getLocationsStore().findById('unterraum')).toBeDefined();
   });
 
   it('speichert alle Stores in localStorage', () => {
+    getAssetStore().createAsset({ type: 'test-typ' });
+    getTypesStore().add({ id: 'test-typ', name: 'Test', fields: [], blocks: [] });
+    getLocationsStore().add({ id: 'test-loc', name: 'Test-Ort' });
     initializeStore();
+    persistStore();
 
     const assets = localStorage.getItem(ASSETS_KEY);
     const types = localStorage.getItem(TYPES_KEY);
@@ -56,6 +151,8 @@ describe('init', () => {
   });
 
   it('lädt Assets aus localStorage beim Neustart', () => {
+    const originalId = getAssetStore().createAsset({ type: 'test-typ' });
+    persistStore();
     initializeStore();
     const originalCount = getAssetStore().all.length;
 
@@ -67,6 +164,7 @@ describe('init', () => {
     // Neue Store-Instanz — Daten müssten aus localStorage kommen
     initializeStore();
     expect(getAssetStore().all.length).toBe(originalCount);
+    expect(getAssetStore().findById(originalId)).toBeDefined();
   });
 
   it('lädt gespeicherte Blockwerte eines Assets nach einem Neustart', () => {

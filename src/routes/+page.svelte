@@ -1,17 +1,45 @@
 <script lang="ts">
   import { base } from '$app/paths';
+  import ColumnFilter from '$lib/components/ColumnFilter.svelte';
+  import {
+    filterAssetRows,
+    getAssetFilterOptions,
+    type AssetOverviewField,
+    type AssetOverviewFilters
+  } from '$lib/components/asset-overview.helpers';
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
-  import type { PageData } from './$types';
+  import { getAssetStore } from '$lib/stores/assets.store.svelte';
 
-  let { data }: { data: PageData } = $props();
+  const assetStore = getAssetStore();
   const editMode = getEditMode();
+  let filters = $state<AssetOverviewFilters>({});
+
+  const assets = $derived.by(() => {
+    assetStore.fieldsVersion;
+    return assetStore.all.map(asset => ({
+      id: asset.id,
+      bezeichnung: assetStore.getField(asset.id, 'bezeichnung')?.trim() || 'Ohne Bezeichnung',
+      typ: asset.type,
+      standort: asset.location || '—',
+      geaendert: asset.geaendert?.slice(0, 10) || '—'
+    }));
+  });
+  const visibleAssets = $derived(filterAssetRows(assets, filters));
+
+  function setFilter(field: AssetOverviewField, selected: string[] | null) {
+    filters = { ...filters, [field]: selected };
+  }
 </script>
 
 <div class="space-y-4">
   <div class="flex items-center justify-between">
     <div>
       <h2 class="text-xl font-semibold text-gray-900">Assets</h2>
-      <p class="text-sm text-gray-500">{data.assets.length} Einträge</p>
+      <p class="text-sm text-gray-500">
+        {visibleAssets.length === assets.length
+          ? `${assets.length} Einträge`
+          : `${visibleAssets.length} von ${assets.length} Einträgen`}
+      </p>
     </div>
     {#if editMode.isEditing}
       <a href="{base}/assets/new" class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-block">
@@ -20,29 +48,74 @@
     {/if}
   </div>
 
-  <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+  <div class="bg-white rounded-lg shadow border border-gray-200">
     <table class="w-full text-sm">
       <thead class="bg-gray-50 border-b border-gray-200">
         <tr>
-          <th class="px-4 py-2 text-left font-medium text-gray-600">ID</th>
-          <th class="px-4 py-2 text-left font-medium text-gray-600">Typ</th>
-          <th class="px-4 py-2 text-left font-medium text-gray-600">Standort</th>
-          <th class="px-4 py-2 text-left font-medium text-gray-600">Geändert</th>
+          <th class="px-4 py-2 text-left font-medium text-gray-600">
+            Bezeichnung
+            <ColumnFilter
+              label="Bezeichnung"
+              options={getAssetFilterOptions(assets, 'bezeichnung')}
+              selected={filters.bezeichnung ?? null}
+              onChange={(selected) => setFilter('bezeichnung', selected)}
+            />
+          </th>
+          <th class="px-4 py-2 text-left font-medium text-gray-600">
+            Typ
+            <ColumnFilter
+              label="Typ"
+              options={getAssetFilterOptions(assets, 'typ')}
+              selected={filters.typ ?? null}
+              onChange={(selected) => setFilter('typ', selected)}
+            />
+          </th>
+          <th class="px-4 py-2 text-left font-medium text-gray-600">
+            Standort
+            <ColumnFilter
+              label="Standort"
+              options={getAssetFilterOptions(assets, 'standort')}
+              selected={filters.standort ?? null}
+              onChange={(selected) => setFilter('standort', selected)}
+            />
+          </th>
+          <th class="px-4 py-2 text-left font-medium text-gray-600">
+            Geändert
+            <ColumnFilter
+              label="Geändert"
+              options={getAssetFilterOptions(assets, 'geaendert')}
+              selected={filters.geaendert ?? null}
+              onChange={(selected) => setFilter('geaendert', selected)}
+            />
+          </th>
           <th class="px-4 py-2 text-right font-medium text-gray-600">Aktion</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-100">
-        {#each data.assets as asset (asset.id)}
-        <tr class="hover:bg-gray-50">
-          <td class="px-4 py-2 font-mono text-xs text-gray-500">{asset.id}</td>
-          <td class="px-4 py-2 capitalize">{asset.type}</td>
-          <td class="px-4 py-2 text-gray-600">{asset.location}</td>
-          <td class="px-4 py-2 text-gray-500">{asset.geaendert}</td>
-          <td class="px-4 py-2 text-right">
-            <a href="{base}/assets/{asset.id}" class="text-blue-600 hover:underline">Öffnen</a>
-          </td>
-        </tr>
-        {/each}
+        {#if visibleAssets.length === 0}
+          <tr>
+            <td colspan="5" class="px-4 py-6 text-center text-sm text-gray-500">
+              {assets.length === 0 ? 'Noch keine Assets vorhanden.' : 'Keine Assets entsprechen den Filtern.'}
+            </td>
+          </tr>
+        {:else}
+          {#each visibleAssets as asset (asset.id)}
+            <tr class="hover:bg-gray-50">
+              <td class="px-4 py-2 font-medium text-gray-900">
+                <a href="{base}/assets/{asset.id}" class="text-blue-700 hover:underline">{asset.bezeichnung}</a>
+                {#if asset.bezeichnung === 'Ohne Bezeichnung'}
+                  <span class="block font-mono text-xs font-normal text-gray-400">{asset.id}</span>
+                {/if}
+              </td>
+              <td class="px-4 py-2 capitalize">{asset.typ}</td>
+              <td class="px-4 py-2 text-gray-600">{asset.standort}</td>
+              <td class="px-4 py-2 text-gray-500">{asset.geaendert}</td>
+              <td class="px-4 py-2 text-right">
+                <a href="{base}/assets/{asset.id}" class="text-blue-600 hover:underline">Öffnen</a>
+              </td>
+            </tr>
+          {/each}
+        {/if}
       </tbody>
     </table>
   </div>

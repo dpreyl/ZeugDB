@@ -1,0 +1,5 @@
+extends: elektrogeraet
+name: Akku-Schrauber
+kategorie: Gelände/Wartung
+feld: Akkuspannung (V), number, optional
+feld: Anzahl_Akkus, number, optional

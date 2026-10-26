@@ -13,8 +13,7 @@ export async function syncAssetsToDb(db: Database, fs: RepoFs): Promise<void> {
   for (const file of files) {
     if (!file.endsWith('.asset')) continue;
 
-    const raw = await fs.readFile(`assets/${file}`, 'text');
-    const content = typeof raw === 'string' ? raw : new TextDecoder().decode(raw);
+    const content = await fs.readFile(`assets/${file}`);
     // Parse to get ID before mirroring
     const idMatch = content.match(/^id:\s*(.+)/m);
     if (!idMatch) continue;

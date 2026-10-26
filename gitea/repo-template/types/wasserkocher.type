@@ -1,0 +1,4 @@
+extends: elektrogeraet
+name: Wasserkocher
+kategorie: Gastro-Küche
+feld: Fassungsvermögen (Liter), number, optional

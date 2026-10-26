@@ -17,6 +17,20 @@ describe('type form helpers', () => {
     expect(draft.blocks).toEqual([{ compId: 'port', min: 0, max: 4 }]);
   });
 
+  it('removes reserved asset metadata fields from legacy type drafts', () => {
+    const draft = createTypeDraft({
+      id: 'device',
+      fields: [
+        { nr: 0, name: 'type', art: 'text', optionen: null, pflicht: true, sensitiv: false },
+        { nr: 1, name: 'bezeichnung', art: 'text', optionen: null, pflicht: true, sensitiv: false },
+        { nr: 2, name: 'Zustand', art: 'text', optionen: null, pflicht: false, sensitiv: false }
+      ],
+      blocks: []
+    });
+
+    expect(draft.fields.map(field => field.name)).toEqual(['Zustand']);
+  });
+
   it('creates a normalized id from a new type name', () => {
     expect(previewTypeId('Gerät & Zubehör')).toBe('geraet-zubehoer');
     expect(previewTypeId(' !!! ')).toBe('');
@@ -108,6 +122,25 @@ describe('type form helpers', () => {
     expect(result.errors).toContain('Bitte gib einen Typnamen ein.');
     expect(result.errors).toContain('Aus dem Typnamen kann keine gültige ID gebildet werden.');
     expect(result.errors).toContain('Bitte gib für jedes Feld einen Namen ein.');
+  });
+
+  it('rejects reserved asset metadata fields in new type definitions', () => {
+    const result = buildTypeDefinition({
+      id: null,
+      name: 'Projektor',
+      extendsId: '',
+      kategorie: '',
+      icon: '',
+      fields: [
+        { name: 'Type', art: 'text', optionen: [], pflicht: false, sensitiv: false },
+        { name: 'Bezeichnung', art: 'text', optionen: [], pflicht: false, sensitiv: false }
+      ],
+      blocks: []
+    }, []);
+
+    expect(result.type).toBeUndefined();
+    expect(result.errors).toContain('„type“ ist reserviert; der Asset-Typ wird beim Anlegen ausgewählt.');
+    expect(result.errors).toContain('„bezeichnung“ ist reserviert; die Asset-Bezeichnung ist ein festes Asset-Feld.');
   });
 
   it('requires at least one option for a dropdown field', () => {

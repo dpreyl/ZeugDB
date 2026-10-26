@@ -1,0 +1,5 @@
+extends: elektrogeraet
+name: Desktop-PC
+kategorie: Büro
+feld: Betriebssystem, text, optional
+feld: Netzteil-Nennleistung (W), number, optional

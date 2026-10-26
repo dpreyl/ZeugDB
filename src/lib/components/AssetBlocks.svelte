@@ -41,13 +41,14 @@
     return compatibleAssets(field, assets, types, excludedAssetId);
   }
 
-  function changeField(blockId: string, index: string, fieldName: string, value: string): void {
+  function changeField(block: BlockDef, index: string, fieldName: string, value: string): void {
+    if (block.fixedFields && Object.hasOwn(block.fixedFields, fieldName)) return;
     onValueChange({
       ...values,
-      [blockId]: {
-        ...values[blockId],
+      [block.compId]: {
+        ...values[block.compId],
         [index]: {
-          ...values[blockId]?.[index],
+          ...values[block.compId]?.[index],
           [fieldName]: value
         }
       }
@@ -59,7 +60,13 @@
     let index = 0;
     while (instances[String(index)] !== undefined) index++;
     if (Object.keys(instances).length >= block.max) return;
-    onValueChange({ ...values, [block.compId]: { ...instances, [String(index)]: {} } });
+    onValueChange({
+      ...values,
+      [block.compId]: {
+        ...instances,
+        [String(index)]: { ...block.fixedFields }
+      }
+    });
   }
 
   function removeInstance(block: BlockDef, index: string): void {
@@ -116,14 +123,17 @@
         {#if component}
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {#each component.fields as field (field.name)}
+              {@const value = block.fixedFields?.[field.name] ?? instance[field.name] ?? ''}
+              {@const fixed = block.fixedFields !== undefined && Object.hasOwn(block.fixedFields, field.name)}
               {#if editable}
                 <label class="block text-sm font-medium text-gray-700">
                   {field.name}{#if field.pflicht}<span aria-hidden="true"> *</span>{/if}
                   {#if field.art === 'dropdown' || field.art === 'auswahl' || field.art === 'boolean' || field.art === 'asset_ref'}
                     <select
-                      value={instance[field.name] ?? ''}
-                      onchange={(event) => changeField(block.compId, index, field.name, event.currentTarget.value)}
+                      value={value}
+                      onchange={(event) => changeField(block, index, field.name, event.currentTarget.value)}
                       required={field.pflicht}
+                      disabled={fixed}
                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                     >
                       <option value="">Bitte wählen</option>
@@ -140,9 +150,10 @@
                   {:else}
                     <input
                       type={field.sensitiv ? 'password' : field.art === 'number' || field.art === 'date' ? field.art : 'text'}
-                      value={instance[field.name] ?? ''}
-                      oninput={(event) => changeField(block.compId, index, field.name, event.currentTarget.value)}
+                      value={value}
+                      oninput={(event) => changeField(block, index, field.name, event.currentTarget.value)}
                       required={field.pflicht}
+                      disabled={fixed}
                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                     />
                   {/if}
@@ -151,7 +162,7 @@
                 <div>
                   <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{field.name}</dt>
                   <dd class="mt-1 min-h-9 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-900">
-                    {displayValue(field, instance[field.name] ?? '')}
+                    {displayValue(field, value)}
                   </dd>
                 </div>
               {/if}

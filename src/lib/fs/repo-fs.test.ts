@@ -10,7 +10,7 @@ describe('createMockFs', () => {
 
   it('liest geschriebene Dateien', async () => {
     await fs.writeFile('assets/a1.asset', 'id: a1\ntype: projektor\nhersteller: Sony');
-    const content = await fs.readFile('assets/a1.asset', 'text');
+    const content = await fs.readFile('assets/a1.asset');
     expect(content).toBe('id: a1\ntype: projektor\nhersteller: Sony');
   });
 
@@ -28,7 +28,7 @@ describe('createMockFs', () => {
   });
 
   it('wirft bei nicht-existenter Datei', async () => {
-    await expect(fs.readFile('missing.asset', 'text')).rejects.toThrow();
+    await expect(fs.readFile('missing.asset')).rejects.toThrow();
   });
 
   it('erkennt leeres Verzeichnis', async () => {
