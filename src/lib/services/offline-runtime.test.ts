@@ -2,10 +2,11 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 describe('offline runtime deployment', () => {
-  it('registers the SvelteKit service worker from the app document', () => {
+  it('does not leave a service worker placeholder visible in the built app document', () => {
     const appTemplate = readFileSync('src/app.html', 'utf8');
 
-    expect(appTemplate).toContain('%sveltekit.serviceWorker.register%');
+    expect(appTemplate).not.toContain('%sveltekit.serviceWorker.register%');
+    expect(() => readFileSync('src/service-worker.js', 'utf8')).not.toThrow();
   });
 
   it('provides HTTPS for trusted offline use from other devices on the LAN', () => {
