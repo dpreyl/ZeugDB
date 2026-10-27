@@ -4,7 +4,8 @@ import {
   filterAssetRows,
   getAssetFilterOptions,
   getLocationDisplayName,
-  getLocationFilterOptions
+  getLocationFilterOptions,
+  searchAssetRows
 } from './asset-overview.helpers';
 
 const rows = [
@@ -76,5 +77,16 @@ describe('asset overview helpers', () => {
     ];
 
     expect(getLocationDisplayName('room-a', locations)).toBe('Haus 1 › Obergeschoss › Raum A');
+  });
+
+  it('searches case-insensitively across device details and location names', () => {
+    const searchableRows = [
+      { ...rows[0], suchtext: 'Sony VPL-XW5000 Seriennummer SN-123' },
+      { ...rows[1], standortName: 'Haus 1 › Saal 2', suchtext: 'Epson EB-L630U' }
+    ];
+
+    expect(searchAssetRows(searchableRows, 'sn-123')).toEqual([searchableRows[0]]);
+    expect(searchAssetRows(searchableRows, 'HAUS 1')).toEqual([searchableRows[1]]);
+    expect(searchAssetRows(searchableRows, '  ')).toEqual(searchableRows);
   });
 });

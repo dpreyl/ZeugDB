@@ -44,4 +44,21 @@ describe('form draft files', () => {
     await drafts.clear('asset:new');
     expect(await drafts.load('asset:new')).toEqual({});
   });
+
+  it('restores multiple files in their selected order and clears the whole field', async () => {
+    const adapter = memoryAdapter();
+    const drafts = createFormDraftFiles(adapter);
+    const images = [
+      new File(['front'], 'front.jpg', { type: 'image/jpeg' }),
+      new File(['rear'], 'rear.jpg', { type: 'image/jpeg' })
+    ];
+
+    await drafts.saveMany('asset:new', 'Mängelfotos', images);
+    const restored = await drafts.loadMany('asset:new');
+
+    expect(restored.Mängelfotos.map(file => file.name)).toEqual(['front.jpg', 'rear.jpg']);
+    expect(await restored.Mängelfotos[0].text()).toBe('front');
+    await drafts.clear('asset:new', 'Mängelfotos');
+    expect(await drafts.loadMany('asset:new')).toEqual({});
+  });
 });

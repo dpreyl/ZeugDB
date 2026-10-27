@@ -30,6 +30,64 @@ describe('AssetTypeFields', () => {
     expect(values.Leistung).toBe('5000');
   });
 
+  it('allows decimal values with a fractional step', () => {
+    render(AssetTypeFields, {
+      props: {
+        fields: [{ nr: 0, name: 'Widerstand', art: 'decimal', optionen: null, pflicht: false, sensitiv: false }],
+        values: { Widerstand: '12.75' },
+        editable: true,
+        onValueChange: () => {}
+      }
+    });
+
+    const input = screen.getByLabelText('Widerstand') as HTMLInputElement;
+    expect(input.type).toBe('number');
+    expect(input.step).toBe('any');
+    expect(input.value).toBe('12.75');
+  });
+
+  it('accepts several photos for a multiple-image field', async () => {
+    const onImagesSelect = vi.fn();
+    const images = [
+      new File(['front'], 'mangel-vorne.jpg', { type: 'image/jpeg' }),
+      new File(['rear'], 'mangel-hinten.jpg', { type: 'image/jpeg' })
+    ];
+
+    render(AssetTypeFields, {
+      props: {
+        fields: [{ nr: 0, name: 'Mängelfotos', art: 'images', optionen: null, pflicht: false, sensitiv: false }],
+        values: {},
+        editable: true,
+        onValueChange: () => {},
+        onImagesSelect
+      }
+    });
+
+    const input = screen.getByLabelText('Bilder für Mängelfotos') as HTMLInputElement;
+    expect(input.multiple).toBe(true);
+    await fireEvent.change(input, { target: { files: images } });
+    expect(onImagesSelect).toHaveBeenCalledWith('Mängelfotos', images);
+  });
+
+  it('shows every saved image from a multiple-image field in read-only mode', () => {
+    const paths = ['fotos/asset-1/photo-0.jpg', 'fotos/asset-1/photo-1.jpg'];
+    render(AssetTypeFields, {
+      props: {
+        fields: [{ nr: 0, name: 'Mängelfotos', art: 'images', optionen: null, pflicht: false, sensitiv: false }],
+        values: { Mängelfotos: JSON.stringify(paths) },
+        editable: false,
+        onValueChange: () => {},
+        imageUrls: {
+          [paths[0]]: 'blob:front',
+          [paths[1]]: 'blob:rear'
+        }
+      }
+    });
+
+    expect(screen.getByRole('img', { name: 'Mängelfotos 1' }).getAttribute('src')).toBe('blob:front');
+    expect(screen.getByRole('img', { name: 'Mängelfotos 2' }).getAttribute('src')).toBe('blob:rear');
+  });
+
   it('renders image fields as image uploads and reports the selected file', async () => {
     const onImageSelect = vi.fn();
     const imageField: FieldType = {

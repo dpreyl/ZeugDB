@@ -16,6 +16,7 @@
   import { initFotoService } from '$lib/services/foto-init';
   import { persistStore } from '$lib/services/init';
   import { photoRoleField, setPhotoRolePath, type PhotoRole } from '$lib/components/asset-photo.helpers';
+  import { appendImageFieldPaths, getImageFieldPaths, serializeImagePaths } from '$lib/components/asset-image-fields';
   import { clearFormDraft, readFormDraft, writeFormDraft } from '$lib/services/form-drafts';
 
   let { data }: { data: PageData } = $props();
@@ -167,13 +168,19 @@
       const roleFields: Record<string, string> = {};
       if (fotoRollenzuordnung.typenschild === pfad) roleFields[photoRoleField('typenschild')] = '';
       if (fotoRollenzuordnung.uebersicht === pfad) roleFields[photoRoleField('uebersicht')] = '';
-      const imageFields = Object.fromEntries(
-        typeFields
-          .filter(field => field.art === 'image' && assetStore.getField(data.id, field.name) === pfad)
-          .map(field => [field.name, ''])
-      );
+      const imageFields = Object.fromEntries(typeFields.flatMap(field => {
+        if (field.art !== 'image' && field.art !== 'images') return [];
+        const paths = getImageFieldPaths(assetStore.getField(data.id, field.name), field.art);
+        if (!paths.includes(pfad)) return [];
+        const remaining = paths.filter(path => path !== pfad);
+        return [[field.name, field.art === 'images' ? serializeImagePaths(remaining) : '']];
+      }));
       for (const field of typeFields) {
-        if (field.art === 'image' && fieldValues[field.name] === pfad) fieldValues[field.name] = '';
+        if (field.art !== 'image' && field.art !== 'images') continue;
+        const paths = getImageFieldPaths(fieldValues[field.name], field.art);
+        if (!paths.includes(pfad)) continue;
+        const remaining = paths.filter(path => path !== pfad);
+        fieldValues[field.name] = field.art === 'images' ? serializeImagePaths(remaining) : '';
       }
       assetStore.setFields(data.id, { fotos: neueListe.join(','), ...roleFields, ...imageFields });
       persistStore();
@@ -183,6 +190,14 @@
   }
 
   async function handleTypeImageSelect(name: string, file: File) {
+    await uploadTypeImages(name, [file]);
+  }
+
+  async function handleTypeImagesSelect(name: string, files: File[]) {
+    await uploadTypeImages(name, files);
+  }
+
+  async function uploadTypeImages(name: string, files: File[]) {
     if (!editMode.isEditing || uploadingImageFields.includes(name)) return;
     fotoError = '';
     uploadingImageFields = [...uploadingImageFields, name];
@@ -190,14 +205,21 @@
       await initFotoService();
       const fotoStore = getFotoStore();
       if (fotoStore.fehle) throw new Error('Foto-Service nicht verfügbar (kein Git-Repo initialisiert)');
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const path = await fotoStore.uploadFoto(data.id, bytes, file.type);
-      const preview = URL.createObjectURL(new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as BlobPart], { type: file.type }));
-      fotoUrls = { ...fotoUrls, [path]: preview };
-      fieldValues[name] = path;
       const currentFields = getAssetStore().getFields(data.id);
-      const photoPaths = [...new Set([...(currentFields.fotos || '').split(',').map(value => value.trim()).filter(Boolean), path])];
-      getAssetStore().setFields(data.id, { [name]: path, fotos: photoPaths.join(',') });
+      const paths: string[] = [];
+      for (const file of files) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const path = await fotoStore.uploadFoto(data.id, bytes, file.type);
+        paths.push(path);
+        fotoUrls = {
+          ...fotoUrls,
+          [path]: URL.createObjectURL(new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as BlobPart], { type: file.type }))
+        };
+      }
+      const multiple = typeFields.find(field => field.name === name)?.art === 'images';
+      const updatedFields = appendImageFieldPaths(currentFields, name, paths, multiple);
+      fieldValues[name] = updatedFields[name];
+      getAssetStore().setFields(data.id, updatedFields);
       persistStore();
     } catch (err) {
       fotoError = err instanceof Error ? err.message : 'Bild-Upload fehlgeschlagen';
@@ -226,9 +248,8 @@
         const fotoStore = getFotoStore();
         if (fotoStore.fehle) return;
         const typeImagePaths = typeFields
-          .filter(field => field.art === 'image')
-          .map(field => String(data[field.name] ?? ''))
-          .filter(Boolean);
+          .filter(field => field.art === 'image' || field.art === 'images')
+          .flatMap(field => getImageFieldPaths(String(data[field.name] ?? ''), field.art));
         for (const path of new Set([...fotos, ...typeImagePaths])) {
           try {
             const { data: raw, mimeType } = await fotoStore.ladeFoto(path);
@@ -328,6 +349,7 @@
           excludedAssetId={data.id}
           onValueChange={updateField}
           onImageSelect={handleTypeImageSelect}
+          onImagesSelect={handleTypeImagesSelect}
           imageUrls={fotoUrls}
           uploadingImageFields={uploadingImageFields}
         />

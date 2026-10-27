@@ -36,9 +36,15 @@ lesbares Typenschildfoto und ein Übersichtsbild führen. Die Bilddateien selbst
 liegen über den vorhandenen Git-LFS-Workflow unter `fotos/<asset-id>/`; die
 Rollen und Dateipfade stehen in der `.asset`-Datei. Weitere Fotos bleiben als
 Zusatzfotos möglich. Zusätzlich kann ein Typ eigene Felder vom Eingabetyp
-`image` definieren, zum Beispiel `feld: typenschild, image, optional`. Beim
-Anlegen oder Bearbeiten des Assets wird das Bild direkt am Feld ausgewählt;
-gespeichert wird der Git-LFS-Dateipfad.
+`image` oder `images` definieren. Beispiele:
+`feld: typenschild, image, optional` und `feld: maengelfotos, images, optional`.
+`image` nimmt eine Datei auf, `images` mehrere Dateien für ein Feld. Beim
+Anlegen oder Bearbeiten des Assets werden die Bilder direkt am Feld ausgewählt;
+die Git-LFS-Pfade des Mehrfach-Bilderfelds stehen als JSON-Array in der
+`.asset`-Datei.
+
+Für Werte mit Nachkommastellen steht der Eingabetyp `decimal` zur Verfügung,
+zum Beispiel `feld: ableitstrom, decimal, optional`.
 
 Der Asset-Typ ist reservierte `type:`-Metadaten und darf nicht als normales
 `feld:` definiert werden. `bezeichnung` wird unabhängig vom Typ bei jedem

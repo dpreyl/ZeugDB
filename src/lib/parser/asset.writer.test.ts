@@ -48,6 +48,13 @@ describe('serializeAsset', () => {
     expect(reparsed.blocks).toEqual(parsed.blocks);
   });
 
+  it('bewahrt JSON-kodierte Mehrfach-Bildpfade in der Asset-Datei', () => {
+    const photos = JSON.stringify(['fotos/asset-1/photo-0.jpg', 'fotos/asset-1/photo-1.jpg']);
+    const input = { direct: { 'Mängelfotos': photos }, blocks: {} };
+
+    expect(parseAsset(serializeAsset(input)).direct['Mängelfotos']).toBe(photos);
+  });
+
   it('schreibt leere Werte ohne trailing-Whitespace', () => {
     const input = {
       direct: { id: 'x' },

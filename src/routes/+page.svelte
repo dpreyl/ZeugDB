@@ -7,17 +7,21 @@
     getAssetFilterOptions,
     getLocationDisplayName,
     getLocationFilterOptions,
+    searchAssetRows,
     type AssetOverviewField,
     type AssetOverviewFilters
   } from '$lib/components/asset-overview.helpers';
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
   import { getAssetStore } from '$lib/stores/assets.store.svelte';
   import { getLocationsStore } from '$lib/stores/locations.store.svelte';
+  import { getTypesStore } from '$lib/stores/types.store.svelte';
 
   const assetStore = getAssetStore();
   const locationsStore = getLocationsStore();
+  const typesStore = getTypesStore();
   const editMode = getEditMode();
   let filters = $state<AssetOverviewFilters>({});
+  let searchQuery = $state('');
 
   const assets = $derived.by(() => {
     assetStore.fieldsVersion;
@@ -27,10 +31,17 @@
       typ: asset.type,
       standort: asset.location || '—',
       standortName: getLocationDisplayName(asset.location || '—', locationsStore.all),
+      suchtext: [
+        asset.id,
+        typesStore.all.find(type => type.id === asset.type)?.name ?? '',
+        ...Object.values(assetStore.getFields(asset.id)),
+        ...Object.values(assetStore.getBlocks(asset.id))
+          .flatMap(instances => Object.values(instances).flatMap(fields => Object.values(fields)))
+      ].join(' '),
       geaendert: asset.geaendert?.slice(0, 10) || '—'
     }));
   });
-  const visibleAssets = $derived(filterAssetRows(assets, filters));
+  const visibleAssets = $derived(filterAssetRows(searchAssetRows(assets, searchQuery), filters));
 
   function setFilter(field: AssetOverviewField, selected: string[] | null) {
     filters = { ...filters, [field]: selected };
@@ -53,6 +64,17 @@
       </a>
     {/if}
   </div>
+
+  <label class="block max-w-lg">
+    <span class="sr-only">Assets suchen</span>
+    <input
+      type="search"
+      aria-label="Assets suchen"
+      bind:value={searchQuery}
+      placeholder="Bezeichnung, Seriennummer, Hersteller, Modell …"
+      class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+    />
+  </label>
 
   <div class="bg-white rounded-lg shadow border border-gray-200">
     <table class="w-full text-sm">

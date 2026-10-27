@@ -70,9 +70,10 @@ der `.type`-Dateisyntax ist dafür nicht erforderlich. Die Typ-ID wird beim
 Anlegen automatisch aus dem Namen erzeugt. Die Felddefinitionen eines Typs
 bestimmen die Eingabefelder beim Anlegen und Bearbeiten der zugehörigen Assets;
 geerbte Felder werden ebenfalls angezeigt. Werte benutzerdefinierter Felder
-werden in der `.asset`-Datei gespeichert. Der Feldtyp **Bild** zeigt eine
-Dateiauswahl samt Vorschau; bei der Neuanlage werden ausgewählte Bilder vor
-dem Asset-Eintrag über Git LFS hochgeladen und als Pfad im Feld gespeichert.
+werden in der `.asset`-Datei gespeichert. **Kommazahl** erlaubt Werte mit
+Nachkommastellen. **Bild** nimmt ein einzelnes Foto auf; **Mehrere Bilder**
+ermöglicht mehrere Fotos, zum Beispiel zur Dokumentation eines Mangels. Die
+Bilddateien werden über den vorhandenen Git-LFS-Workflow gespeichert.
 Ungespeicherte Eingaben in Asset-, Typ- und Standortformularen werden lokal im
 Browser als Entwurf gesichert und nach einem Neuladen wiederhergestellt.
 Ausgewählte Bilder eines neuen Assets liegen dafür vorübergehend in IndexedDB;
@@ -101,6 +102,9 @@ Standort und Änderungsdatum besitzen Filter: Im Spaltenkopf lassen sich die
 vorhandenen Werte einzeln ein- oder ausblenden. Der Standortfilter bildet die
 Standorthierarchie ab: **Auswahl leeren** und anschließend etwa „Haus 1“
 auswählen, um Assets aus dem Haus und allen darunterliegenden Räumen zu sehen.
+Über das Suchfeld lassen sich Assets außerdem anhand der Bezeichnung, des Typs,
+des Standorts und gespeicherter Gerätedaten wie Hersteller, Modell oder
+Seriennummer finden.
 
 ## Entwicklung
 

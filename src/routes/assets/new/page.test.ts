@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
     fehle: false,
     uploadFoto: vi.fn().mockResolvedValue('fotos/asset-draft/photo-0.png')
   },
-  draftFiles: {} as Record<string, Record<string, File>>,
+  draftFiles: {} as Record<string, Record<string, File[]>>,
   persistStore: vi.fn(),
   goto: vi.fn()
 }));
@@ -36,9 +36,13 @@ vi.mock('$lib/services/foto-init', () => ({ initFotoService: vi.fn().mockResolve
 vi.mock('$lib/services/form-draft-files', () => ({
   formDraftFiles: {
     save: vi.fn(async (key: string, field: string, file: File) => {
-      (mocks.draftFiles[key] ??= {})[field] = file;
+      (mocks.draftFiles[key] ??= {})[field] = [file];
     }),
     load: vi.fn(async (key: string) => mocks.draftFiles[key] ?? {}),
+    saveMany: vi.fn(async (key: string, field: string, files: File[]) => {
+      (mocks.draftFiles[key] ??= {})[field] = files;
+    }),
+    loadMany: vi.fn(async (key: string) => mocks.draftFiles[key] ?? {}),
     clear: vi.fn(async (key: string, field?: string) => {
       if (!field) delete mocks.draftFiles[key];
       else delete mocks.draftFiles[key]?.[field];
@@ -92,7 +96,7 @@ describe('Asset-Neuanlage mit Bildfeldern', () => {
     await fireEvent.change(screen.getByLabelText('Bild für Typenschild'), {
       target: { files: [image] }
     });
-    await waitFor(() => expect(mocks.draftFiles['asset:new']?.Typenschild).toBe(image));
+    await waitFor(() => expect(mocks.draftFiles['asset:new']?.Typenschild).toEqual([image]));
     await waitFor(() => expect(localStorage.getItem('zeugdb:form-draft:asset:new')).not.toBeNull());
 
     cleanup();
@@ -169,7 +173,7 @@ describe('Asset-Neuanlage mit Bildfeldern', () => {
 
     await fireEvent.input(screen.getByLabelText('Bezeichnung'), { target: { value: 'Kamera Eingang' } });
     await fireEvent.change(screen.getByLabelText('Bild für Typenschild'), { target: { files: [image] } });
-    await waitFor(() => expect(mocks.draftFiles['asset:new']?.Typenschild).toBe(image));
+    await waitFor(() => expect(mocks.draftFiles['asset:new']?.Typenschild).toEqual([image]));
     await waitFor(() => expect(localStorage.getItem('zeugdb:form-draft:asset:new')).not.toBeNull());
 
     cleanup();
@@ -177,6 +181,45 @@ describe('Asset-Neuanlage mit Bildfeldern', () => {
 
     await waitFor(() => expect((screen.getByLabelText('Bezeichnung') as HTMLInputElement).value).toBe('Kamera Eingang'));
     expect((await screen.findByRole('img', { name: 'Typenschild' })).getAttribute('src')).toBe('blob:preview');
-    expect(mocks.draftFiles['asset:new']?.Typenschild.name).toBe('typenschild.png');
+    expect(mocks.draftFiles['asset:new']?.Typenschild[0].name).toBe('typenschild.png');
+  });
+
+  it('speichert mehrere Bilder eines Typfelds als Git-LFS-Pfade am Asset', async () => {
+    enterEditMode();
+    mocks.types.all = [{
+      id: 'geraet',
+      name: 'Gerät',
+      fields: [{ nr: 0, name: 'Mängelfotos', art: 'images', optionen: null, pflicht: false, sensitiv: false }],
+      blocks: []
+    }];
+    mocks.fotos.uploadFoto
+      .mockResolvedValueOnce('fotos/asset-draft/photo-0.jpg')
+      .mockResolvedValueOnce('fotos/asset-draft/photo-1.jpg');
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:preview'),
+      revokeObjectURL: vi.fn()
+    });
+    render(NewAssetPage);
+
+    await fireEvent.input(screen.getByLabelText('Bezeichnung'), { target: { value: 'Gerät mit Mangel' } });
+    await fireEvent.change(screen.getByLabelText('Bilder für Mängelfotos'), {
+      target: { files: [
+        new File(['front'], 'mangel-vorne.jpg', { type: 'image/jpeg' }),
+        new File(['rear'], 'mangel-hinten.jpg', { type: 'image/jpeg' })
+      ] }
+    });
+    await fireEvent.submit(screen.getByRole('heading', { name: 'Neues Asset' }).closest('form')!);
+
+    await waitFor(() => expect(mocks.assets.createAsset).toHaveBeenCalled());
+    expect(mocks.fotos.uploadFoto).toHaveBeenCalledTimes(2);
+    expect(mocks.assets.createAsset).toHaveBeenCalledWith(expect.objectContaining({
+      fields: expect.objectContaining({
+        'Mängelfotos': JSON.stringify([
+          'fotos/asset-draft/photo-0.jpg',
+          'fotos/asset-draft/photo-1.jpg'
+        ]),
+        fotos: 'fotos/asset-draft/photo-0.jpg,fotos/asset-draft/photo-1.jpg'
+      })
+    }));
   });
 });

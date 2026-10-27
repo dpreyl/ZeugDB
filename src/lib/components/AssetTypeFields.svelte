@@ -2,6 +2,7 @@
   import type { FieldType, TypeDefinition } from '$lib/parser/types';
   import { compatibleAssets, type AssetReferenceOption } from './asset-blocks.helpers';
   import { fieldOptions } from './asset-type-fields';
+  import { getImageFieldPaths } from './asset-image-fields';
 
   type Props = {
     fields: FieldType[];
@@ -12,8 +13,9 @@
     types?: TypeDefinition[];
     excludedAssetId?: string;
     onImageSelect?: (name: string, file: File) => void | Promise<void>;
+    onImagesSelect?: (name: string, files: File[]) => void | Promise<void>;
     imageUrls?: Record<string, string>;
-    imagePreviews?: Record<string, string>;
+    imagePreviews?: Record<string, string | string[]>;
     uploadingImageFields?: string[];
   };
 
@@ -26,6 +28,7 @@
     types = [],
     excludedAssetId,
     onImageSelect,
+    onImagesSelect,
     imageUrls = {},
     imagePreviews = {},
     uploadingImageFields = []
@@ -40,12 +43,23 @@
     if (!value) return '—';
     if (field.art === 'boolean') return value === 'true' ? 'Ja' : value === 'false' ? 'Nein' : value;
     if (field.art === 'asset_ref') return assets.find(asset => asset.id === value)?.label ?? value;
+    if (field.art === 'images') return `${getImageFieldPaths(value, field.art).length} Bilder`;
     return value;
   }
 
+  function imagePaths(field: FieldType): string[] {
+    return getImageFieldPaths(values[field.name], field.art);
+  }
+
+  function imagePreviewList(field: FieldType): string[] {
+    const preview = imagePreviews[field.name];
+    if (Array.isArray(preview)) return preview;
+    if (preview) return [preview];
+    return imagePaths(field).map(path => imageUrls[path]).filter(Boolean);
+  }
+
   function imageUrl(field: FieldType): string {
-    const value = values[field.name] ?? '';
-    return imagePreviews[field.name] ?? imageUrls[value] ?? '';
+    return imagePreviewList(field)[0] ?? '';
   }
 
 </script>
@@ -56,7 +70,36 @@
       {#if editable}
         <label class="block text-sm font-medium text-gray-700">
           {field.name}{#if field.pflicht}<span aria-hidden="true"> *</span>{/if}
-          {#if field.art === 'image'}
+          {#if field.art === 'images'}
+            {#if imagePreviewList(field).length > 0}
+              <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {#each imagePreviewList(field) as preview, index (`${field.name}-${index}`)}
+                  <img src={preview} alt="{field.name} {index + 1}" class="h-24 w-full rounded-md border border-gray-200 bg-gray-50 object-contain" />
+                {/each}
+              </div>
+            {/if}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              capture="environment"
+              multiple
+              required={field.pflicht && imagePaths(field).length === 0 && imagePreviewList(field).length === 0}
+              aria-label="Bilder für {field.name}"
+              disabled={uploadingImageFields.includes(field.name)}
+              onchange={async (event) => {
+                const input = event.currentTarget;
+                const files = Array.from(input.files ?? []);
+                input.value = '';
+                if (files.length > 0) await onImagesSelect?.(field.name, files);
+              }}
+              class="mt-1 block w-full text-sm text-gray-500 file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+            />
+            {#if uploadingImageFields.includes(field.name)}
+              <span class="mt-1 block text-xs text-gray-500" role="status">Bilder werden gespeichert…</span>
+            {:else if imagePaths(field).length > 0}
+              <span class="mt-1 block text-xs text-gray-500">{imagePaths(field).length} Bilder gespeichert</span>
+            {/if}
+          {:else if field.art === 'image'}
             {#if imageUrl(field)}
               <img src={imageUrl(field)} alt={field.name} class="mt-2 h-32 w-full rounded-md border border-gray-200 bg-gray-50 object-contain" />
             {/if}
@@ -102,9 +145,10 @@
           {:else}
             <input
               name={field.name}
-              type={field.sensitiv ? 'password' : field.art === 'number' || field.art === 'date' ? field.art : 'text'}
+              type={field.sensitiv ? 'password' : field.art === 'number' || field.art === 'decimal' ? 'number' : field.art === 'date' ? 'date' : 'text'}
               value={values[field.name] ?? ''}
               oninput={(event) => onValueChange(field.name, event.currentTarget.value)}
+              step={field.art === 'decimal' ? 'any' : undefined}
               required={field.pflicht}
               class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             />
@@ -114,8 +158,12 @@
         <div>
           <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{field.name}</dt>
           <dd class="mt-1 min-h-9 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-900">
-            {#if field.art === 'image' && imageUrl(field)}
-              <img src={imageUrl(field)} alt={field.name} class="max-h-40 rounded-md object-contain" />
+            {#if (field.art === 'image' || field.art === 'images') && imagePreviewList(field).length > 0}
+              <div class="grid grid-cols-2 gap-2">
+                {#each imagePreviewList(field) as preview, index (`${field.name}-${index}`)}
+                  <img src={preview} alt="{field.name} {index + 1}" class="max-h-40 rounded-md object-contain" />
+                {/each}
+              </div>
             {:else}
               {displayValue(field)}
             {/if}

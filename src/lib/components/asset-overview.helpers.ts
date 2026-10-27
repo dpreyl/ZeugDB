@@ -9,6 +9,7 @@ export type AssetOverviewRow = {
   typ: string;
   standort: string;
   standortName?: string;
+  suchtext?: string;
   geaendert: string;
 };
 
@@ -28,6 +29,19 @@ export function getAssetFilterOptions(
   return [...new Set(rows.map(row => row[field]))].sort((left, right) =>
     left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' })
   );
+}
+
+export function searchAssetRows(rows: AssetOverviewRow[], query: string): AssetOverviewRow[] {
+  const term = query.trim().toLocaleLowerCase();
+  if (!term) return rows;
+
+  return rows.filter(row => [
+    row.bezeichnung,
+    row.typ,
+    row.standort,
+    row.standortName ?? '',
+    row.suchtext ?? ''
+  ].some(value => value.toLocaleLowerCase().includes(term)));
 }
 
 export function getLocationFilterOptions(

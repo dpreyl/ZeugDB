@@ -5,6 +5,7 @@ export interface DraftFileRecord {
   name: string;
   type: string;
   lastModified: number;
+  index?: number;
   data: Blob;
 }
 
@@ -28,6 +29,20 @@ export function createFormDraftFiles(adapter: DraftFileAdapter) {
       });
     },
 
+    async saveMany(draftKey: string, fieldName: string, files: File[]): Promise<void> {
+      await this.clear(draftKey, fieldName);
+      await Promise.all(files.map((file, index) => adapter.put({
+        key: `${draftKey}:${fieldName}:${index}`,
+        draftKey,
+        fieldName,
+        name: file.name,
+        type: file.type,
+        lastModified: file.lastModified,
+        index,
+        data: file
+      })));
+    },
+
     async load(draftKey: string): Promise<Record<string, File>> {
       const records = await adapter.getAll();
       return Object.fromEntries(records
@@ -39,6 +54,20 @@ export function createFormDraftFiles(adapter: DraftFileAdapter) {
             lastModified: record.lastModified
           })
         ]));
+    },
+
+    async loadMany(draftKey: string): Promise<Record<string, File[]>> {
+      const records = (await adapter.getAll())
+        .filter(record => record.draftKey === draftKey)
+        .sort((left, right) => (left.index ?? 0) - (right.index ?? 0));
+      const files: Record<string, File[]> = {};
+      for (const record of records) {
+        (files[record.fieldName] ??= []).push(new File([record.data], record.name, {
+          type: record.type,
+          lastModified: record.lastModified
+        }));
+      }
+      return files;
     },
 
     async clear(draftKey: string, fieldName?: string): Promise<void> {

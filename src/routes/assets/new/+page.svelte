@@ -12,7 +12,7 @@
   import type { AssetBlockValues } from '$lib/components/asset-blocks.helpers';
   import { getFotoStore } from '$lib/stores/fotos.store.svelte';
   import { initFotoService } from '$lib/services/foto-init';
-  import { uploadImageFields } from '$lib/components/asset-image-fields';
+  import { getImageFieldPaths, uploadImageFields } from '$lib/components/asset-image-fields';
   import { clearFormDraft, readFormDraft, writeFormDraft } from '$lib/services/form-drafts';
   import { formDraftFiles } from '$lib/services/form-draft-files';
   import { persistStore } from '$lib/services/init';
@@ -24,8 +24,8 @@
   let fieldValues = $state<Record<string, string>>({});
   let blockValues = $state<AssetBlockValues>({});
   let location = $state('');
-  let selectedImages = $state<Record<string, File>>({});
-  let imagePreviews = $state<Record<string, string>>({});
+  let selectedImages = $state<Record<string, File[]>>({});
+  let imagePreviews = $state<Record<string, string | string[]>>({});
   let saving = $state(false);
   let savingDraftFields = $state<string[]>([]);
   let imageError = $state('');
@@ -96,11 +96,13 @@
     }
 
     try {
-      selectedImages = await formDraftFiles.load('asset:new');
-      imagePreviews = Object.fromEntries(Object.entries(selectedImages).map(([name, file]) => [
-        name,
-        URL.createObjectURL(file)
-      ]));
+      selectedImages = await formDraftFiles.loadMany('asset:new');
+      imagePreviews = Object.fromEntries(Object.entries(selectedImages).map(([name, files]) => {
+        const previews = files.map(file => URL.createObjectURL(file));
+        return [name, typeFields.find(field => field.name === name)?.art === 'images'
+          ? previews
+          : previews[0] ?? ''];
+      }));
     } catch {
       imageError = 'Gespeicherte Bildauswahl konnte nicht wiederhergestellt werden.';
     } finally {
@@ -114,8 +116,10 @@
 
   async function handleImageSelect(name: string, file: File) {
     const oldPreview = imagePreviews[name];
-    if (oldPreview) URL.revokeObjectURL(oldPreview);
-    selectedImages[name] = file;
+    for (const preview of Array.isArray(oldPreview) ? oldPreview : oldPreview ? [oldPreview] : []) {
+      URL.revokeObjectURL(preview);
+    }
+    selectedImages[name] = [file];
     imagePreviews = { ...imagePreviews, [name]: URL.createObjectURL(file) };
     savingDraftFields = [...savingDraftFields, name];
     imageError = '';
@@ -125,6 +129,26 @@
       await write;
     } catch {
       imageError = 'Bild konnte nicht lokal für die Wiederherstellung gespeichert werden.';
+    } finally {
+      pendingDraftWrites.delete(name);
+      savingDraftFields = savingDraftFields.filter(field => field !== name);
+    }
+  }
+
+  async function handleImagesSelect(name: string, files: File[]) {
+    const selected = [...(selectedImages[name] ?? []), ...files];
+    const prior = imagePreviews[name];
+    const previews = [...(Array.isArray(prior) ? prior : prior ? [prior] : []), ...files.map(file => URL.createObjectURL(file))];
+    selectedImages[name] = selected;
+    imagePreviews = { ...imagePreviews, [name]: previews };
+    savingDraftFields = [...savingDraftFields, name];
+    imageError = '';
+    const write = formDraftFiles.saveMany('asset:new', name, selected);
+    pendingDraftWrites.set(name, write);
+    try {
+      await write;
+    } catch {
+      imageError = 'Bilder konnten nicht lokal für die Wiederherstellung gespeichert werden.';
     } finally {
       pendingDraftWrites.delete(name);
       savingDraftFields = savingDraftFields.filter(field => field !== name);
@@ -142,7 +166,8 @@
       let fields = Object.fromEntries(
         typeFields.map(field => [field.name, fieldValues[field.name] ?? ''])
       );
-      if (typeFields.some(field => field.art === 'image') && Object.keys(selectedImages).length > 0) {
+      if (typeFields.some(field => field.art === 'image' || field.art === 'images')
+        && Object.values(selectedImages).some(files => files.length > 0)) {
         await initFotoService();
         const fotoStore = getFotoStore();
         if (fotoStore.fehle) throw new Error('Foto-Service nicht verfügbar (kein Git-Repo initialisiert)');
@@ -155,8 +180,8 @@
             const bytes = new Uint8Array(await file.arrayBuffer());
             return fotoStore.uploadFoto(assetId, bytes, file.type);
           },
-          (fieldName, path) => {
-            fieldValues[fieldName] = path;
+          (fieldName, value) => {
+            fieldValues[fieldName] = value;
             const { [fieldName]: _uploaded, ...remaining } = selectedImages;
             selectedImages = remaining;
             void formDraftFiles.clear('asset:new', fieldName);
@@ -165,9 +190,8 @@
       }
 
       const imagePaths = typeFields
-        .filter(field => field.art === 'image')
-        .map(field => fields[field.name])
-        .filter(Boolean);
+        .filter(field => field.art === 'image' || field.art === 'images')
+        .flatMap(field => getImageFieldPaths(fields[field.name], field.art));
       assets.createAsset({
         id: draftAssetId,
         type,
@@ -198,7 +222,9 @@
     goto(`${base}/`);
   }
 
-  onDestroy(() => Object.values(imagePreviews).forEach(URL.revokeObjectURL));
+  onDestroy(() => Object.values(imagePreviews).flatMap(previews =>
+    Array.isArray(previews) ? previews : previews ? [previews] : []
+  ).forEach(URL.revokeObjectURL));
 </script>
 
 <form onsubmit={handleSave} class="max-w-2xl space-y-6">
@@ -233,6 +259,7 @@
       types={types.all}
       onValueChange={updateField}
       onImageSelect={handleImageSelect}
+      onImagesSelect={handleImagesSelect}
       imagePreviews={imagePreviews}
       uploadingImageFields={[...new Set([...savingDraftFields, ...(saving ? Object.keys(selectedImages) : [])])]}
     />

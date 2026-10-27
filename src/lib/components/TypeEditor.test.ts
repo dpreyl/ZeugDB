@@ -72,6 +72,29 @@ describe('TypeEditor', () => {
     }));
   });
 
+  it('offers decimal number and multiple-image fields for asset types', async () => {
+    const onSave = vi.fn();
+    render(TypeEditor, {
+      props: { type: null, existingTypes: [], onSave, onCancel: vi.fn() }
+    });
+
+    await fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'Prüfgerät' } });
+    await fireEvent.click(screen.getByRole('button', { name: '+ Feld hinzufügen' }));
+    await fireEvent.input(screen.getByLabelText('Feldname'), { target: { value: 'Messwert' } });
+    await fireEvent.change(screen.getByLabelText('Eingabetyp'), { target: { value: 'decimal' } });
+    await fireEvent.click(screen.getByRole('button', { name: '+ Feld hinzufügen' }));
+    await fireEvent.input(screen.getAllByLabelText('Feldname')[1], { target: { value: 'Mängelfotos' } });
+    await fireEvent.change(screen.getAllByLabelText('Eingabetyp')[1], { target: { value: 'images' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      fields: [
+        expect.objectContaining({ name: 'Messwert', art: 'decimal' }),
+        expect.objectContaining({ name: 'Mängelfotos', art: 'images' })
+      ]
+    }));
+  });
+
   it('loads an existing type and displays validation errors instead of saving invalid fields', async () => {
     const onSave = vi.fn();
     const type: TypeDefinition = {

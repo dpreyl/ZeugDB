@@ -75,4 +75,25 @@ describe('Assets-Seite', () => {
     expect(screen.getByText('Projektor Haus 1')).toBeTruthy();
     expect(screen.queryByText('Projektor Haus 2')).toBeNull();
   });
+
+  it('sucht Geräte anhand von Bezeichnung und gespeicherten Gerätedaten', async () => {
+    const store = getAssetStore();
+    store.createAsset({
+      type: 'projektor',
+      fields: { bezeichnung: 'Projektor Werkstatt', seriennummer: 'SN-8421' }
+    });
+    store.createAsset({
+      type: 'monitor',
+      fields: { bezeichnung: 'Monitor Büro', seriennummer: 'MN-105' }
+    });
+    render(Page, { props: { data: { assets: [] } } as never });
+
+    await fireEvent.input(screen.getByRole('searchbox', { name: 'Assets suchen' }), {
+      target: { value: 'sn-8421' }
+    });
+
+    expect(screen.getByText('Projektor Werkstatt')).toBeTruthy();
+    expect(screen.queryByText('Monitor Büro')).toBeNull();
+    expect(screen.getByText(/1 von 2 Einträgen/)).toBeTruthy();
+  });
 });

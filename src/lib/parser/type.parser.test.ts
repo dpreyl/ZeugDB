@@ -55,6 +55,16 @@ describe('parseType', () => {
     }]);
   });
 
+  it('parst Kommazahl- und Mehrere-Bilder-Felder', () => {
+    const parsed = parseType('pruefgeraet', [
+      'feld: ableitstrom, decimal, pflicht',
+      'feld: maengelfotos, images, optional'
+    ].join('\n'));
+
+    expect(parsed.fields.map(field => field.art)).toEqual(['decimal', 'images']);
+    expect(parsed.fields.map(field => field.pflicht)).toEqual([true, false]);
+  });
+
   it('parsed Block-Definitionen', () => {
     const result = parseType('_base', baseType);
     expect(result.blocks).toEqual([

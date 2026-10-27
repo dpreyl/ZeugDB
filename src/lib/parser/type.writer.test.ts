@@ -56,6 +56,23 @@ describe('serializeType', () => {
     expect(parseType(type.id, serializeType(type))).toEqual(type);
   });
 
+  it('round-trips decimal and multiple-image field definitions', () => {
+    const type: TypeDefinition = {
+      id: 'pruefgeraet',
+      fields: [
+        { nr: 0, name: 'ableitstrom', art: 'decimal', optionen: null, pflicht: true, sensitiv: false },
+        { nr: 1, name: 'maengelfotos', art: 'images', optionen: null, pflicht: false, sensitiv: false }
+      ],
+      blocks: []
+    };
+
+    expect(serializeType(type)).toBe([
+      'feld: ableitstrom, decimal, pflicht',
+      'feld: maengelfotos, images, optional'
+    ].join('\n'));
+    expect(parseType(type.id, serializeType(type))).toEqual(type);
+  });
+
   it('serializes fixed values for component fields in a type block', () => {
     const type: TypeDefinition = {
       id: 'hdmi-kabel',

@@ -173,4 +173,63 @@ describe('Bildfelder im Asset-Detail', () => {
     ));
     expect(mocks.fotos.uploadFoto).toHaveBeenCalledWith('asset-1', expect.any(Uint8Array), 'image/png');
   });
+
+  it('fügt mehrere ausgewählte Bilder einem Mehrfach-Bilderfeld hinzu', async () => {
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:preview'),
+      revokeObjectURL: vi.fn()
+    });
+    mocks.types.all = [{
+      id: 'geraet',
+      fields: [{ nr: 0, name: 'Mängelfotos', art: 'images', optionen: null, pflicht: false, sensitiv: false }],
+      blocks: []
+    }];
+    mocks.fotos.uploadFoto
+      .mockResolvedValueOnce('fotos/asset-1/photo-0.jpg')
+      .mockResolvedValueOnce('fotos/asset-1/photo-1.jpg');
+    render(AssetPage, {
+      props: {
+        data: {
+          id: 'asset-1',
+          type: 'geraet',
+          bezeichnung: 'Gerät mit Mangel',
+          'Mängelfotos': '',
+          hersteller: '',
+          modell: '',
+          seriennummer: '',
+          inventarnummer: '',
+          zustand: '',
+          notizen: '',
+          fotos: '',
+          blocks: {},
+          location: null,
+          erstellt: null,
+          geaendert: null
+        }
+      }
+    });
+
+    const files = [
+      new File(['front'], 'mangel-vorne.jpg', { type: 'image/jpeg' }),
+      new File(['rear'], 'mangel-hinten.jpg', { type: 'image/jpeg' })
+    ];
+    files.forEach((file, index) => Object.defineProperty(file, 'arrayBuffer', {
+      value: vi.fn().mockResolvedValue(new Uint8Array([index]).buffer)
+    }));
+    await fireEvent.change(screen.getByLabelText('Bilder für Mängelfotos'), {
+      target: { files }
+    });
+
+    await waitFor(() => expect(mocks.assets.setFields).toHaveBeenCalledWith(
+      'asset-1',
+      expect.objectContaining({
+        'Mängelfotos': JSON.stringify([
+          'fotos/asset-1/photo-0.jpg',
+          'fotos/asset-1/photo-1.jpg'
+        ]),
+        fotos: 'fotos/asset-1/photo-0.jpg,fotos/asset-1/photo-1.jpg'
+      })
+    ));
+    expect(mocks.fotos.uploadFoto).toHaveBeenCalledTimes(2);
+  });
 });

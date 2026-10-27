@@ -83,12 +83,14 @@
   const fieldTypes = [
     { value: 'text', label: 'Text' },
     { value: 'number', label: 'Zahl' },
+    { value: 'decimal', label: 'Kommazahl' },
     { value: 'date', label: 'Datum' },
     { value: 'boolean', label: 'Ja/Nein' },
     { value: 'dropdown', label: 'Auswahlliste' },
     { value: 'uuid', label: 'UUID' },
     { value: 'asset_ref', label: 'Asset-Referenz' },
     { value: 'image', label: 'Bild' },
+    { value: 'images', label: 'Mehrere Bilder' },
     { value: 'auswahl', label: 'Auswahl (alt)' }
   ];
 
@@ -380,7 +382,8 @@
                 {:else}
                   <input
                     aria-label={`Fester Wert für ${field.name}`}
-                    type={field.art === 'number' || field.art === 'date' ? field.art : 'text'}
+                    type={field.art === 'number' || field.art === 'decimal' ? 'number' : field.art === 'date' ? 'date' : 'text'}
+                    step={field.art === 'decimal' ? 'any' : undefined}
                     value={block.fixedFields?.[field.name] ?? ''}
                     oninput={(event) => setFixedField(block, field.name, event.currentTarget.value)}
                     placeholder="Bei Asset eingeben"
