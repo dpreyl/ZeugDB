@@ -129,6 +129,52 @@ describe('Bildfelder im Asset-Detail', () => {
     expect(screen.getByLabelText('Übersichtsbild hochladen').getAttribute('capture')).toBe('environment');
   });
 
+  it('erlaubt die Änderung des Asset-Typs beim Bearbeiten und speichert ihn', async () => {
+    mocks.types.all = [
+      {
+        id: 'kamera',
+        name: 'Kamera',
+        fields: [{ nr: 0, name: 'Auflösung', art: 'text', optionen: null, pflicht: false, sensitiv: false }],
+        blocks: []
+      },
+      {
+        id: 'projektor',
+        name: 'Projektor',
+        fields: [{ nr: 0, name: 'Lichtleistung', art: 'number', optionen: null, pflicht: false, sensitiv: false }],
+        blocks: []
+      }
+    ] as any;
+    render(AssetPage, {
+      props: {
+        data: {
+          id: 'asset-1',
+          type: 'kamera',
+          bezeichnung: 'Gerät',
+          Auflösung: '4K',
+          hersteller: '',
+          modell: '',
+          seriennummer: '',
+          inventarnummer: '',
+          zustand: '',
+          notizen: '',
+          fotos: '',
+          blocks: {},
+          location: null,
+          erstellt: null,
+          geaendert: null
+        }
+      }
+    });
+
+    await fireEvent.change(screen.getByLabelText('Typ'), { target: { value: 'projektor' } });
+    expect(screen.getByLabelText('Lichtleistung')).toBeTruthy();
+    await fireEvent.submit(screen.getByLabelText('Bezeichnung').closest('form')!);
+
+    expect(mocks.assets.updateAsset).toHaveBeenCalledWith('asset-1', expect.objectContaining({
+      type: 'projektor'
+    }));
+  });
+
   it('lädt ein Bildfeld zu Git LFS hoch und speichert den Bildpfad als Asset-Feld', async () => {
     vi.stubGlobal('URL', {
       createObjectURL: vi.fn(() => 'blob:preview'),

@@ -148,14 +148,20 @@ export class AssetStore {
    * Aktualisiert ein existierendes Asset (location + Felder).
    */
   updateAsset(id: string, input: {
+    type?: string;
     location?: string | null;
     fields?: Record<string, string>;
     blocks?: AssetBlockValues;
   }): void {
     const idx = this.all.findIndex(a => a.id === id);
     if (idx === -1) throw new Error(`Asset '${id}' nicht gefunden`);
-    if (input.location !== undefined) {
-      this.all[idx] = { ...this.all[idx], location: input.location, geaendert: new Date().toISOString() };
+    if (input.type !== undefined || input.location !== undefined) {
+      this.all[idx] = {
+        ...this.all[idx],
+        ...(input.type !== undefined ? { type: input.type } : {}),
+        ...(input.location !== undefined ? { location: input.location } : {}),
+        geaendert: new Date().toISOString()
+      };
     }
     if (input.fields && Object.keys(input.fields).length > 0) {
       this.setFields(id, input.fields);

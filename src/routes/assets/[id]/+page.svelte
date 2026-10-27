@@ -35,9 +35,14 @@
   const locations = getLocationsStore();
   const types = getTypesStore();
   const editMode = getEditMode();
-  let designation = $state('');
-  let fieldValues = $state<Record<string, string>>({});
-  let blockValues = $state<AssetBlockValues>({});
+  let selectedType = $state(untrack(() => data.type));
+  let designation = $state(untrack(() => String(data.bezeichnung ?? '')));
+  let fieldValues = $state<Record<string, string>>(untrack(() =>
+    Object.fromEntries(resolveAssetTypeFields(data.type, types.all).map(field => [field.name, String(data[field.name] ?? '')]))
+  ));
+  let blockValues = $state<AssetBlockValues>(untrack(() =>
+    createBlockValues(resolveAssetTypeBlocks(data.type, types.all), data.blocks ?? {})
+  ));
   let fotoError = $state('');
   let uploading = $state(false);
   let uploadingImageFields = $state<string[]>([]);
@@ -62,8 +67,9 @@
     };
   });
 
-  const typeFields = $derived(resolveAssetTypeFields(data.type, types.all));
-  const typeBlocks = $derived(resolveAssetTypeBlocks(data.type, types.all));
+  const sortedTypes = $derived(sortByLabel(types.all, item => item.name?.trim() || item.id));
+  const typeFields = $derived(resolveAssetTypeFields(selectedType, types.all));
+  const typeBlocks = $derived(resolveAssetTypeBlocks(selectedType, types.all));
   const locationOptions = $derived(getLocationSelectOptions(locations.all));
   const assetOptions = $derived(sortByLabel(assets.all.map(asset => {
     const assetType = types.all.find(item => item.id === asset.type);
@@ -77,21 +83,29 @@
   }), option => option.label));
 
   $effect(() => {
-    designation = String(data.bezeichnung ?? '');
-    fieldValues = Object.fromEntries(
-      typeFields.map(field => [field.name, String(data[field.name] ?? '')])
-    );
-    blockValues = createBlockValues(typeBlocks, data.blocks ?? {});
-  });
-
-  $effect(() => {
     if (restoringDraft || draftCompleted) return;
     writeFormDraft(draftKey, {
       designation,
+      type: selectedType,
       fieldValues: { ...fieldValues },
       blockValues: JSON.parse(JSON.stringify(blockValues))
     });
   });
+
+  function handleTypeChange(type: string) {
+    selectedType = type;
+    const nextFields = resolveAssetTypeFields(type, types.all);
+    fieldValues = Object.fromEntries(
+      nextFields.map(field => [
+        field.name,
+        fieldValues[field.name] ?? String(data[field.name] ?? '')
+      ])
+    );
+    blockValues = createBlockValues(
+      resolveAssetTypeBlocks(type, types.all),
+      blockValues
+    );
+  }
 
   function updateField(name: string, value: string) {
     fieldValues[name] = value;
@@ -107,6 +121,7 @@
     }
     fields.fotos = assets.getField(data.id, 'fotos') ?? '';
     assets.updateAsset(data.id, {
+      type: selectedType,
       fields,
       blocks: blockValues,
       location: String(fd.get('location') ?? '') || null
@@ -293,11 +308,15 @@
   onMount(() => {
     const draft = readFormDraft<{
       designation: string;
+      type?: string;
       fieldValues: Record<string, string>;
       blockValues: AssetBlockValues;
     }>(draftKey);
     if (draft) {
       designation = draft.designation;
+      if (draft.type && types.all.some(type => type.id === draft.type)) {
+        handleTypeChange(draft.type);
+      }
       fieldValues = draft.fieldValues;
       blockValues = draft.blockValues;
     }
@@ -399,9 +418,12 @@
           <input id="bezeichnung" name="bezeichnung" bind:value={designation} required maxlength="160" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
         </div>
         <div>
-          <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Typ</p>
-          <p class="mt-1 text-sm text-gray-900">{data.type}</p>
-          <p class="mt-1 text-xs text-gray-500">Der Asset-Typ kann nach dem Anlegen nicht geändert werden.</p>
+          <label for="type" class="block text-sm font-medium text-gray-700 mb-1">Typ</label>
+          <select id="type" value={selectedType} onchange={(event) => handleTypeChange(event.currentTarget.value)} required class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            {#each sortedTypes as item}
+              <option value={item.id}>{item.name || item.id}</option>
+            {/each}
+          </select>
         </div>
 
         <AssetTypeFields

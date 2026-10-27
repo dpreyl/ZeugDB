@@ -150,6 +150,14 @@ describe('AssetStore fields', () => {
     expect(store.getField(id, 'zustand')).toBe('defekt');
   });
 
+  it('ändert den Typ eines bestehenden Assets', () => {
+    const id = store.createAsset({ type: 'kabel', location: null });
+
+    store.updateAsset(id, { type: 'adapter' });
+
+    expect(store.findById(id)?.type).toBe('adapter');
+  });
+
   it('aktualisiert Blockinstanzen zusammen mit Asset-Feldern', () => {
     const id = store.createAsset({ type: 'projektor', location: null });
     store.updateAsset(id, { blocks: { port: { '1': { name: 'HDMI IN' } } } });

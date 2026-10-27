@@ -48,7 +48,9 @@ Selbstzuordnungen oder Zyklen entstehen.
 ## Schreibmodus
 
 Assets, Typen und Standorte können nur im aktivierten Schreibmodus angelegt,
-geändert oder gelöscht werden. Im Read-Only-Modus werden Details als Text
+geändert oder gelöscht werden. Bei bestehenden Assets kann im Schreibmodus
+auch der Typ geändert werden; die typabhängigen Felder und Bausteine passen sich
+an. Im Read-Only-Modus werden Details als Text
 angezeigt statt als scheinbar editierbare Felder; bei Typen öffnet **Details
 ansehen** die Feld- und Blockdefinitionen, bei Standorten die Identität, Art
 und Koordinaten. Verwaltungsaktionen sind ausgeblendet. Zum Bearbeiten zuerst
