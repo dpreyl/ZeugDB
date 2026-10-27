@@ -3,8 +3,11 @@ feld: Prüfdatum, date, pflicht
 feld: Prüfer, text, pflicht
 feld: Prüfergebnis, dropdown, Bestanden|Mangel|Nicht bestanden, pflicht
 feld: Prüfart, dropdown, Erstprüfung|Wiederholungsprüfung|Prüfung nach Reparatur, pflicht
+feld: Schutzklasse, dropdown, I|II, pflicht
 feld: Schutzleiterwiderstand (Ohm), number, optional
 feld: Isolationswiderstand (MOhm), number, optional
 feld: Ableitstrom (mA), number, optional
+feld: Ableitstrom IPE (mA), number, optional
+feld: Ableitstrom IBERÜH (mA), number, optional
 feld: Mängel, text, optional
 feld: Maßnahme, text, optional

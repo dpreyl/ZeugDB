@@ -61,6 +61,16 @@ Neuladen wird eine aktive Edit-Sitzung im selben Tab fortgesetzt. Erst nach
 **Sync** oder **Verwerfen** kehrt die App in den Read-Only-Modus auf `main`
 zurück. Ein neu gestarteter Edit-Modus erhält weiterhin einen eigenen Branch.
 
+## DGUV-Prüfungsassistent
+
+Über **DGUV-Prüfung** können Geräte in einem Raum geprüft werden. Die Suche
+berücksichtigt Geräte aus allen Räumen; beim Speichern wird ein vorhandenes
+Gerät dem ausgewählten Raum zugeordnet. Prüfer und Raum bleiben auf diesem
+Gerät für Folgeprüfungen vorgemerkt. Der Assistent fragt Schutzklasse,
+passende Messwerte sowie Prüfergebnis ab und bietet optionale Übersichts- und
+Typenschildbilder an. Neue Geräte erhalten automatisch eine Erstprüfung,
+vorhandene eine Wiederholungsprüfung.
+
 ## Typen verwalten
 
 Asset-Typen werden auf der Seite **Typen** über ein Formular erstellt und

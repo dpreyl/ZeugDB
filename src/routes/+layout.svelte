@@ -120,6 +120,7 @@
       <h1 class="text-lg font-semibold text-gray-900">ZeugDB</h1>
       <nav class="flex gap-4 text-sm">
         <a href="{base}/" class="text-gray-600 hover:text-gray-900">Assets</a>
+        <a href="{base}/inspections" class="text-gray-600 hover:text-gray-900">DGUV-Prüfung</a>
         <a href="{base}/types" class="text-gray-600 hover:text-gray-900">Typen</a>
         <a href="{base}/locations" class="text-gray-600 hover:text-gray-900">Standorte</a>
         <a href="{base}/settings" class="text-gray-600 hover:text-gray-900">Einstellungen</a>
