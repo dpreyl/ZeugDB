@@ -8,6 +8,7 @@
   import { fieldOptions } from './asset-type-fields';
   import { getImageFieldPaths } from './asset-image-fields';
   import { getBlockImageFieldKey } from './asset-block-image-fields';
+  import { sortByLabel } from './sort-options';
 
   type Props = {
     definitions: BlockDef[];
@@ -50,7 +51,7 @@
   }
 
   function optionsFor(field: FieldType): AssetReferenceOption[] {
-    return compatibleAssets(field, assets, types, excludedAssetId);
+    return sortByLabel(compatibleAssets(field, assets, types, excludedAssetId), option => option.label);
   }
 
   function changeField(block: BlockDef, index: string, fieldName: string, value: string): void {

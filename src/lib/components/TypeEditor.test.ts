@@ -24,6 +24,27 @@ describe('TypeEditor', () => {
     expect((screen.getByLabelText('Feldname') as HTMLInputElement).value).toBe('Leistung');
   });
 
+  it('sorts parent types by their visible names', () => {
+    render(TypeEditor, {
+      props: {
+        type: null,
+        existingTypes: [
+          { id: 'zebra', name: 'Zebra', fields: [], blocks: [] },
+          { id: 'type-10', name: 'Typ 10', fields: [], blocks: [] },
+          { id: 'alpha', name: 'Alpha', fields: [], blocks: [] },
+          { id: 'type-2', name: 'Typ 2', fields: [], blocks: [] }
+        ] as TypeDefinition[],
+        onSave: vi.fn(),
+        onCancel: vi.fn()
+      }
+    });
+
+    const parentSelect = screen.getByLabelText('Basiert auf') as HTMLSelectElement;
+    expect([...parentSelect.options].map(option => option.textContent)).toEqual([
+      'Keine Vererbung', 'Alpha', 'Typ 2', 'Typ 10', 'Zebra'
+    ]);
+  });
+
   it('creates fields and dropdown options using form controls', async () => {
     const onSave = vi.fn();
     render(TypeEditor, {

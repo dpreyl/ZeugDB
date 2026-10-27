@@ -280,4 +280,33 @@ describe('Asset-Neuanlage mit Bildfeldern', () => {
     })));
     expect(mocks.draftFiles['asset:new']).toBeUndefined();
   });
+
+  it('sortiert Typen alphabetisch und Standorte nach Hierarchie mit natürlicher Namenssortierung', async () => {
+    enterEditMode();
+    mocks.types.all = [
+      { id: 'zebra', name: 'Zebra', fields: [], blocks: [] },
+      { id: 'raum-10', name: 'Raum 10', fields: [], blocks: [] },
+      { id: 'alpha', name: 'Alpha', fields: [], blocks: [] },
+      { id: 'raum-2', name: 'Raum 2', fields: [], blocks: [] }
+    ] as any;
+    mocks.locations.all = [
+      { id: 'raum-10', name: 'Raum 10', eltern: 'haus-1', art: 'raum' },
+      { id: 'haus-2', name: 'Haus 2', art: 'raum' },
+      { id: 'raum-2', name: 'Raum 2', eltern: 'haus-1', art: 'raum' },
+      { id: 'haus-1', name: 'Haus 1', art: 'raum' }
+    ] as any;
+
+    render(NewAssetPage);
+
+    const typeSelect = screen.getByLabelText('Typ') as HTMLSelectElement;
+    expect([...typeSelect.options].map(option => option.textContent)).toEqual([
+      'Alpha', 'Raum 2', 'Raum 10', 'Zebra'
+    ]);
+    expect(typeSelect.value).toBe('zebra');
+
+    const locationSelect = screen.getByLabelText('Standort') as HTMLSelectElement;
+    expect([...locationSelect.options].map(option => option.textContent)).toEqual([
+      'Kein Standort', 'Haus 1', '— Raum 2', '— Raum 10', 'Haus 2'
+    ]);
+  });
 });

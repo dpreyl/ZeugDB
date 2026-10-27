@@ -198,8 +198,9 @@ describe('AssetTypeFields', () => {
         editable: true,
         onValueChange: () => {},
         assets: [
-          { id: 'cable-1', type: 'hdmi-kabel', label: 'HDMI-Kabel · cable-1' },
-          { id: 'projector-1', type: 'projektor', label: 'Projektor · projector-1' }
+          { id: 'cable-z', type: 'hdmi-kabel', label: 'Zulu-Kabel · cable-z' },
+          { id: 'projector-1', type: 'projektor', label: 'Projektor · projector-1' },
+          { id: 'cable-a', type: 'hdmi-kabel', label: 'Alpha-Kabel · cable-a' }
         ],
         types: [
           { id: 'kabel', fields: [], blocks: [] },
@@ -210,7 +211,7 @@ describe('AssetTypeFields', () => {
     });
 
     const selector = screen.getByLabelText('Kabel') as HTMLSelectElement;
-    expect([...selector.options].map(option => option.value)).toContain('cable-1');
+    expect([...selector.options].map(option => option.value)).toEqual(['', 'cable-a', 'cable-z']);
     expect([...selector.options].map(option => option.value)).not.toContain('projector-1');
   });
 

@@ -26,6 +26,8 @@
   import { photoRoleField, setPhotoRolePath, type PhotoRole } from '$lib/components/asset-photo.helpers';
   import { appendImageFieldPaths, getImageFieldPaths, serializeImagePaths } from '$lib/components/asset-image-fields';
   import { clearFormDraft, readFormDraft, writeFormDraft } from '$lib/services/form-drafts';
+  import { getLocationSelectOptions } from '$lib/locations/location-tree';
+  import { sortByLabel } from '$lib/components/sort-options';
 
   let { data }: { data: PageData } = $props();
   const assets = getAssetStore();
@@ -62,7 +64,8 @@
 
   const typeFields = $derived(resolveAssetTypeFields(data.type, types.all));
   const typeBlocks = $derived(resolveAssetTypeBlocks(data.type, types.all));
-  const assetOptions = $derived(assets.all.map(asset => {
+  const locationOptions = $derived(getLocationSelectOptions(locations.all));
+  const assetOptions = $derived(sortByLabel(assets.all.map(asset => {
     const assetType = types.all.find(item => item.id === asset.type);
     const fields = assets.getFields(asset.id);
     const details = [fields.hersteller, fields.modell].filter(Boolean).join(' ');
@@ -71,7 +74,7 @@
       type: asset.type,
       label: [assetType?.name ?? asset.type, details, asset.id].filter(Boolean).join(' · ')
     };
-  }));
+  }), option => option.label));
 
   $effect(() => {
     designation = String(data.bezeichnung ?? '');
@@ -433,8 +436,8 @@
           <label for="location" class="block text-sm font-medium text-gray-700 mb-1">Standort</label>
           <select id="location" name="location" value={data.location ?? ''} class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
             <option value="">Kein Standort</option>
-            {#each locations.all as item}
-              <option value={item.id}>{item.name ?? item.id}</option>
+            {#each locationOptions as item}
+              <option value={item.id}>{item.label}</option>
             {/each}
           </select>
           <a href="{base}/locations" class="mt-1 inline-block text-xs text-blue-600 hover:underline">Standort mit GPS-Koordinaten verwalten</a>

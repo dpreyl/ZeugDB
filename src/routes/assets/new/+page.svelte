@@ -22,6 +22,8 @@
   import { clearFormDraft, readFormDraft, writeFormDraft } from '$lib/services/form-drafts';
   import { formDraftFiles } from '$lib/services/form-draft-files';
   import { persistStore } from '$lib/services/init';
+  import { getLocationSelectOptions } from '$lib/locations/location-tree';
+  import { sortByLabel } from '$lib/components/sort-options';
   import { base } from '$app/paths';
   import { goto } from '$app/navigation';
 
@@ -45,9 +47,11 @@
   const types = getTypesStore();
   const editMode = getEditMode();
   let draftAssetId = $state(assets.reserveAssetId());
+  const sortedTypes = $derived(sortByLabel(types.all, item => item.name?.trim() || item.id));
+  const locationOptions = $derived(getLocationSelectOptions(locations.all));
   const typeFields = $derived(resolveAssetTypeFields(type, types.all));
   const typeBlocks = $derived(resolveAssetTypeBlocks(type, types.all));
-  const assetOptions = $derived(assets.all.map(asset => {
+  const assetOptions = $derived(sortByLabel(assets.all.map(asset => {
     const assetType = types.all.find(item => item.id === asset.type);
     const fields = assets.getFields(asset.id);
     const details = [fields.hersteller, fields.modell].filter(Boolean).join(' ');
@@ -56,7 +60,7 @@
       type: asset.type,
       label: [assetType?.name ?? asset.type, details, asset.id].filter(Boolean).join(' · ')
     };
-  }));
+  }), option => option.label));
   let blockTypeId = '';
 
   $effect(() => {
@@ -309,7 +313,7 @@
     <div>
       <label for="type" class="block text-sm font-medium text-gray-700 mb-1">Typ</label>
       <select id="type" bind:value={type} required class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-        {#each types.all as item (item.id)}
+        {#each sortedTypes as item (item.id)}
           <option value={item.id}>{item.name ?? item.id}</option>
         {/each}
       </select>
@@ -346,8 +350,8 @@
       <label for="location" class="block text-sm font-medium text-gray-700 mb-1">Standort</label>
       <select id="location" bind:value={location} class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
         <option value="">Kein Standort</option>
-        {#each locations.all as item (item.id)}
-          <option value={item.id}>{item.name ?? item.id}</option>
+        {#each locationOptions as item (item.id)}
+          <option value={item.id}>{item.label}</option>
         {/each}
       </select>
       <a href="{base}/locations" class="mt-1 inline-block text-xs text-blue-600 hover:underline">Standort mit GPS-Koordinaten anlegen oder auf der Karte anzeigen</a>

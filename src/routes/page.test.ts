@@ -8,10 +8,12 @@ describe('Assets-Seite', () => {
   beforeEach(() => {
     resetAssetStore();
     resetLocationsStore();
+    sessionStorage.clear();
   });
 
   afterEach(() => {
     cleanup();
+    sessionStorage.clear();
     resetAssetStore();
     resetLocationsStore();
   });
@@ -95,5 +97,32 @@ describe('Assets-Seite', () => {
     expect(screen.getByText('Projektor Werkstatt')).toBeTruthy();
     expect(screen.queryByText('Monitor Büro')).toBeNull();
     expect(screen.getByText(/1 von 2 Einträgen/)).toBeTruthy();
+  });
+
+  it('stellt den Standortfilter nach dem Zurückkehren zur Liste wieder her', async () => {
+    getLocationsStore().setAll([
+      { id: 'house-1', name: 'Haus 1', art: 'raum' },
+      { id: 'room-a', name: 'Raum A', eltern: 'house-1', art: 'raum' },
+      { id: 'house-2', name: 'Haus 2', art: 'raum' },
+      { id: 'room-b', name: 'Raum B', eltern: 'house-2', art: 'raum' }
+    ]);
+    const store = getAssetStore();
+    store.createAsset({ id: 'asset-a', type: 'kamera', location: 'room-a', fields: { bezeichnung: 'Kamera Haus 1' } });
+    store.createAsset({ id: 'asset-b', type: 'kamera', location: 'room-b', fields: { bezeichnung: 'Kamera Haus 2' } });
+
+    const { unmount } = render(Page, { props: { data: { assets: [] } } as never });
+    await fireEvent.click(screen.getByRole('button', { name: 'Filter Standort' }));
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'Haus 1' }));
+    expect(screen.queryByText('Kamera Haus 1')).toBeNull();
+
+    unmount();
+    render(Page, { props: { data: { assets: [] } } as never });
+
+    await waitFor(() => {
+      expect(screen.getByText('Kamera Haus 2')).toBeTruthy();
+    });
+    expect(screen.queryByText('Kamera Haus 1')).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Filter Standort' }));
+    expect((screen.getByRole('checkbox', { name: 'Haus 1' }) as HTMLInputElement).checked).toBe(false);
   });
 });

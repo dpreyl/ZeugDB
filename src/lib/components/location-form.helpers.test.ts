@@ -27,8 +27,8 @@ describe('location form coordinate helpers', () => {
     ];
 
     expect(getSelectableParents(locations, locations[1])).toEqual([
-      { id: 'campus', name: 'Campus', depth: 0 },
-      { id: 'other', name: 'Anderes Gebäude', depth: 0 }
+      { id: 'other', name: 'Anderes Gebäude', depth: 0 },
+      { id: 'campus', name: 'Campus', depth: 0 }
     ]);
   });
 

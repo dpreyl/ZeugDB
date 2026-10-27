@@ -14,7 +14,8 @@ const components = [{
   ]
 }];
 const assets = [
-  { id: 'cable-1', type: 'kabel', label: 'HDMI-Kabel · cable-1' },
+  { id: 'cable-z', type: 'kabel', label: 'Zulu-Kabel · cable-z' },
+  { id: 'cable-a', type: 'kabel', label: 'Alpha-Kabel · cable-a' },
   { id: 'projector-1', type: 'projektor', label: 'Projektor · projector-1' }
 ];
 
@@ -34,7 +35,7 @@ describe('AssetBlocks', () => {
 
     expect(screen.getByLabelText(/name/)).toBeTruthy();
     const reference = screen.getByLabelText('kabel') as HTMLSelectElement;
-    expect([...reference.options].map(option => option.value)).toContain('cable-1');
+    expect([...reference.options].map(option => option.value)).toEqual(['', 'cable-a', 'cable-z']);
     expect([...reference.options].map(option => option.value)).not.toContain('projector-1');
   });
 

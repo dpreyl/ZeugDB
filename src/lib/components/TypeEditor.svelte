@@ -9,6 +9,7 @@
     type TypeFieldDraft
   } from './type-form.helpers';
   import { fieldTypes } from './field-types';
+  import { sortByLabel } from './sort-options';
 
   type Props = {
     type: TypeDefinition | null;
@@ -20,6 +21,11 @@
 
   type BlockDraft = BlockDef;
   let { type, existingTypes, existingComponents = [], onSave, onCancel }: Props = $props();
+  const sortedTypes = $derived(sortByLabel(existingTypes, item => item.name?.trim() || item.id));
+  const sortedComponents = $derived(sortByLabel(
+    existingComponents,
+    item => item.name?.trim() || item.id
+  ));
   const initialType = untrack(() => type);
   let formName = $state('');
   let formExtends = $state('');
@@ -175,7 +181,7 @@
       Basiert auf
       <select bind:value={formExtends} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
         <option value="">Keine Vererbung</option>
-        {#each existingTypes.filter(item => item.id !== type?.id) as parent (parent.id)}
+        {#each sortedTypes.filter(item => item.id !== type?.id) as parent (parent.id)}
           <option value={parent.id}>{parent.name ?? parent.id}</option>
         {/each}
       </select>
@@ -311,10 +317,10 @@
             Baustein-Komponente
             <select value={block.compId} onchange={(event) => selectComponent(block, event.currentTarget.value)} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
               <option value="">Komponente wählen</option>
-              {#if block.compId && !existingComponents.some(component => component.id === block.compId)}
+              {#if block.compId && !sortedComponents.some(component => component.id === block.compId)}
                 <option value={block.compId}>{block.compId} (nicht vorhanden)</option>
               {/if}
-              {#each existingComponents as component (component.id)}
+              {#each sortedComponents as component (component.id)}
                 <option value={component.id}>{component.name || component.id}</option>
               {/each}
             </select>

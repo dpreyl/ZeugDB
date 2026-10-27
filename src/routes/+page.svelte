@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { base } from '$app/paths';
   import ColumnFilter from '$lib/components/ColumnFilter.svelte';
   import LocationFilter from '$lib/components/LocationFilter.svelte';
@@ -11,6 +12,7 @@
     type AssetOverviewField,
     type AssetOverviewFilters
   } from '$lib/components/asset-overview.helpers';
+  import { loadAssetOverviewState, saveAssetOverviewState } from '$lib/components/asset-overview-state';
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
   import { getAssetStore } from '$lib/stores/assets.store.svelte';
   import { getLocationsStore } from '$lib/stores/locations.store.svelte';
@@ -22,6 +24,12 @@
   const editMode = getEditMode();
   let filters = $state<AssetOverviewFilters>({});
   let searchQuery = $state('');
+
+  onMount(() => {
+    const savedState = loadAssetOverviewState();
+    filters = savedState.filters;
+    searchQuery = savedState.searchQuery;
+  });
 
   const assets = $derived.by(() => {
     assetStore.fieldsVersion;
@@ -45,6 +53,12 @@
 
   function setFilter(field: AssetOverviewField, selected: string[] | null) {
     filters = { ...filters, [field]: selected };
+    saveAssetOverviewState({ filters, searchQuery });
+  }
+
+  function setSearchQuery(query: string) {
+    searchQuery = query;
+    saveAssetOverviewState({ filters, searchQuery });
   }
 </script>
 
@@ -70,7 +84,8 @@
     <input
       type="search"
       aria-label="Assets suchen"
-      bind:value={searchQuery}
+      value={searchQuery}
+      oninput={(event) => setSearchQuery(event.currentTarget.value)}
       placeholder="Bezeichnung, Seriennummer, Hersteller, Modell …"
       class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
     />

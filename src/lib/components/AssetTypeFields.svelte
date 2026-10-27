@@ -3,6 +3,7 @@
   import { compatibleAssets, type AssetReferenceOption } from './asset-blocks.helpers';
   import { fieldOptions } from './asset-type-fields';
   import { getImageFieldPaths } from './asset-image-fields';
+  import { sortByLabel } from './sort-options';
 
   type Props = {
     fields: FieldType[];
@@ -36,6 +37,10 @@
 
   function optionsFor(field: FieldType): string[] {
     return field.art === 'boolean' ? ['true', 'false'] : fieldOptions(field);
+  }
+
+  function assetOptionsFor(field: FieldType): AssetReferenceOption[] {
+    return sortByLabel(compatibleAssets(field, assets, types, excludedAssetId), option => option.label);
   }
 
   function displayValue(field: FieldType): string {
@@ -133,7 +138,7 @@
             >
               <option value="">Bitte wählen</option>
               {#if field.art === 'asset_ref'}
-                {#each compatibleAssets(field, assets, types, excludedAssetId) as option (option.id)}
+                {#each assetOptionsFor(field) as option (option.id)}
                   <option value={option.id}>{option.label}</option>
                 {/each}
               {:else}

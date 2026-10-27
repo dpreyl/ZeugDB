@@ -1,5 +1,6 @@
 import type { Location } from '../parser/types';
 import { flattenLocationTree } from '../locations/location-tree';
+import { sortByLabel } from './sort-options';
 
 export type AssetOverviewField = 'bezeichnung' | 'typ' | 'standort' | 'geaendert';
 
@@ -26,9 +27,7 @@ export function getAssetFilterOptions(
   rows: AssetOverviewRow[],
   field: AssetOverviewField
 ): string[] {
-  return [...new Set(rows.map(row => row[field]))].sort((left, right) =>
-    left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' })
-  );
+  return sortByLabel([...new Set(rows.map(row => row[field]))], value => value);
 }
 
 export function searchAssetRows(rows: AssetOverviewRow[], query: string): AssetOverviewRow[] {

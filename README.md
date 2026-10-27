@@ -106,7 +106,12 @@ Standorthierarchie ab: **Auswahl leeren** und anschließend etwa „Haus 1“
 auswählen, um Assets aus dem Haus und allen darunterliegenden Räumen zu sehen.
 Über das Suchfeld lassen sich Assets außerdem anhand der Bezeichnung, des Typs,
 des Standorts und gespeicherter Gerätedaten wie Hersteller, Modell oder
-Seriennummer finden.
+Seriennummer finden. Filter- und Suchauswahl bleiben im aktuellen Browser-Tab
+erhalten, wenn ein Asset geöffnet und anschließend zur Übersicht zurückgekehrt
+wird. Typ- und Asset-Referenz-Auswahllisten sind nach ihrem sichtbaren Namen
+alphabetisch sortiert; Standorte erscheinen nach Hierarchie und innerhalb
+derselben Ebene nach Namen. Frei definierte Auswahlwerte behalten ihre
+konfigurierte Reihenfolge.
 
 ## Entwicklung
 

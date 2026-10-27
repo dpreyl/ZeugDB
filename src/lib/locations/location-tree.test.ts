@@ -25,4 +25,16 @@ describe('flattenLocationTree', () => {
     expect(rows.map(({ location }) => location.id)).toEqual(['first', 'second']);
     expect(rows.map(({ depth }) => depth)).toEqual([0, 1]);
   });
+
+  it('sorts roots and siblings by name while keeping each hierarchy together', () => {
+    const locations = [
+      { id: 'room-10', name: 'Raum 10', eltern: 'house-1' },
+      { id: 'house-2', name: 'Haus 2' },
+      { id: 'room-2', name: 'Raum 2', eltern: 'house-1' },
+      { id: 'house-1', name: 'Haus 1' }
+    ];
+
+    expect(flattenLocationTree(locations).map(({ location }) => location.id))
+      .toEqual(['house-1', 'room-2', 'room-10', 'house-2']);
+  });
 });
