@@ -232,4 +232,75 @@ describe('Bildfelder im Asset-Detail', () => {
     ));
     expect(mocks.fotos.uploadFoto).toHaveBeenCalledTimes(2);
   });
+
+  it('speichert Bilder aus wiederverwendbaren Komponenten in den Bausteinwerten', async () => {
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:preview'),
+      revokeObjectURL: vi.fn()
+    });
+    mocks.types.all = [{
+      id: 'geraet',
+      fields: [],
+      blocks: [{ compId: 'pruefung', min: 1, max: 1 }]
+    }] as any;
+    mocks.components.all = [{
+      id: 'pruefung',
+      name: 'Prüfung',
+      fields: [{ nr: 0, name: 'Mängelfotos', art: 'images', optionen: null, pflicht: false, sensitiv: false }]
+    }] as any;
+    mocks.fotos.uploadFoto
+      .mockResolvedValueOnce('fotos/asset-1/block-0.jpg')
+      .mockResolvedValueOnce('fotos/asset-1/block-1.jpg');
+    render(AssetPage, {
+      props: {
+        data: {
+          id: 'asset-1',
+          type: 'geraet',
+          bezeichnung: 'Gerät mit Prüfung',
+          hersteller: '',
+          modell: '',
+          seriennummer: '',
+          inventarnummer: '',
+          zustand: '',
+          notizen: '',
+          fotos: '',
+          blocks: { pruefung: { '0': { Mängelfotos: '[]' } } },
+          location: null,
+          erstellt: null,
+          geaendert: null
+        }
+      }
+    });
+
+    const files = [
+      new File(['front'], 'mangel-vorne.jpg', { type: 'image/jpeg' }),
+      new File(['rear'], 'mangel-hinten.jpg', { type: 'image/jpeg' })
+    ];
+    files.forEach((file, index) => Object.defineProperty(file, 'arrayBuffer', {
+      value: vi.fn().mockResolvedValue(new Uint8Array([index]).buffer)
+    }));
+    await fireEvent.change(screen.getByLabelText('Bilder für Prüfung 1: Mängelfotos'), {
+      target: { files }
+    });
+
+    await waitFor(() => expect(mocks.assets.setFields).toHaveBeenCalledWith(
+      'asset-1',
+      expect.objectContaining({
+        fotos: 'fotos/asset-1/block-0.jpg,fotos/asset-1/block-1.jpg'
+      })
+    ));
+    await fireEvent.submit(screen.getByLabelText('Bezeichnung').closest('form')!);
+    expect(mocks.assets.updateAsset).toHaveBeenCalledWith('asset-1', expect.objectContaining({
+      blocks: {
+        pruefung: {
+          '0': {
+            Mängelfotos: JSON.stringify([
+              'fotos/asset-1/block-0.jpg',
+              'fotos/asset-1/block-1.jpg'
+            ])
+          }
+        }
+      }
+    }));
+  });
 });

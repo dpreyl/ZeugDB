@@ -202,4 +202,29 @@ describe('TypeEditor', () => {
       }]
     }));
   });
+
+  it('weist feste Bildwerte zurück, weil Komponentenbilder pro Asset hochgeladen werden', async () => {
+    const port = {
+      id: 'port',
+      name: 'Port',
+      fields: [{
+        nr: 0,
+        name: 'Mängelfotos',
+        art: 'images',
+        optionen: null,
+        pflicht: false,
+        sensitiv: false
+      }]
+    };
+    render(TypeEditor, {
+      props: { type: null, existingTypes: [], existingComponents: [port], onSave: vi.fn(), onCancel: vi.fn() }
+    });
+
+    await fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'Projektor' } });
+    await fireEvent.click(screen.getByRole('button', { name: '+ Baustein hinzufügen' }));
+    await fireEvent.change(screen.getByLabelText('Baustein-Komponente'), { target: { value: 'port' } });
+
+    expect(screen.getByText('Bilder werden pro Asset hochgeladen.')).toBeTruthy();
+    expect(screen.queryByLabelText('Fester Wert für Mängelfotos')).toBeNull();
+  });
 });

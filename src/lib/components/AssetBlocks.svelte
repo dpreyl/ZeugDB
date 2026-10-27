@@ -6,6 +6,8 @@
     type AssetReferenceOption
   } from './asset-blocks.helpers';
   import { fieldOptions } from './asset-type-fields';
+  import { getImageFieldPaths } from './asset-image-fields';
+  import { getBlockImageFieldKey } from './asset-block-image-fields';
 
   type Props = {
     definitions: BlockDef[];
@@ -15,6 +17,11 @@
     types?: TypeDefinition[];
     editable: boolean;
     onValueChange: (values: AssetBlockValues) => void;
+    onImageSelect?: (blockId: string, instanceId: string, fieldName: string, file: File) => void | Promise<void>;
+    onImagesSelect?: (blockId: string, instanceId: string, fieldName: string, files: File[]) => void | Promise<void>;
+    imageUrls?: Record<string, string>;
+    imagePreviews?: Record<string, string | string[]>;
+    uploadingImageFields?: string[];
     excludedAssetId?: string;
   };
 
@@ -26,6 +33,11 @@
     types = [],
     editable,
     onValueChange,
+    onImageSelect,
+    onImagesSelect,
+    imageUrls = {},
+    imagePreviews = {},
+    uploadingImageFields = [],
     excludedAssetId
   }: Props = $props();
 
@@ -84,7 +96,16 @@
     if (!value) return '—';
     if (field.art === 'boolean') return value === 'true' ? 'Ja' : value === 'false' ? 'Nein' : value;
     if (field.art === 'asset_ref') return assets.find(asset => asset.id === value)?.label ?? value;
+    if (field.art === 'images') return `${getImageFieldPaths(value, field.art).length} Bilder`;
     return value;
+  }
+
+  function imagePreviewsFor(blockId: string, instanceId: string, field: FieldType, value: string): string[] {
+    const key = getBlockImageFieldKey(blockId, instanceId, field.name);
+    const preview = imagePreviews[key];
+    if (Array.isArray(preview)) return preview;
+    if (preview) return [preview];
+    return getImageFieldPaths(value, field.art).map(path => imageUrls[path]).filter(Boolean);
   }
 </script>
 
@@ -147,9 +168,46 @@
                         {/each}
                       {/if}
                     </select>
+                  {:else if field.art === 'image' || field.art === 'images'}
+                    {@const previews = imagePreviewsFor(block.compId, index, field, value)}
+                    {@const imageKey = getBlockImageFieldKey(block.compId, index, field.name)}
+                    {#if previews.length > 0}
+                      <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {#each previews as preview, imageIndex (`${imageKey}-${imageIndex}`)}
+                          <img src={preview} alt="{field.name} {imageIndex + 1}" class="h-24 w-full rounded-md border border-gray-200 bg-gray-50 object-contain" />
+                        {/each}
+                      </div>
+                    {/if}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      capture="environment"
+                      multiple={field.art === 'images'}
+                      required={field.pflicht && getImageFieldPaths(value, field.art).length === 0 && previews.length === 0}
+                      aria-label="{field.art === 'images' ? 'Bilder' : 'Bild'} für {component.name} {Number(index) + 1}: {field.name}"
+                      disabled={uploadingImageFields.includes(imageKey) || fixed}
+                      onchange={async (event) => {
+                        const input = event.currentTarget;
+                        const files = Array.from(input.files ?? []);
+                        input.value = '';
+                        if (field.art === 'images') {
+                          if (files.length > 0) await onImagesSelect?.(block.compId, index, field.name, files);
+                        } else if (files[0]) {
+                          await onImageSelect?.(block.compId, index, field.name, files[0]);
+                        }
+                      }}
+                      class="mt-1 block w-full text-sm text-gray-500 file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+                    />
+                    {#if uploadingImageFields.includes(imageKey)}
+                      <span class="mt-1 block text-xs text-gray-500" role="status">Bilder werden gespeichert…</span>
+                    {:else if getImageFieldPaths(value, field.art).length > 0}
+                      {@const imageCount = getImageFieldPaths(value, field.art).length}
+                      <span class="mt-1 block text-xs text-gray-500">{imageCount} {imageCount === 1 ? 'Bild' : 'Bilder'} gespeichert</span>
+                    {/if}
                   {:else}
                     <input
-                      type={field.sensitiv ? 'password' : field.art === 'number' || field.art === 'date' ? field.art : 'text'}
+                      type={field.sensitiv ? 'password' : field.art === 'number' || field.art === 'decimal' ? 'number' : field.art === 'date' ? 'date' : 'text'}
+                      step={field.art === 'decimal' ? 'any' : undefined}
                       value={value}
                       oninput={(event) => changeField(block, index, field.name, event.currentTarget.value)}
                       required={field.pflicht}
@@ -162,7 +220,20 @@
                 <div>
                   <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{field.name}</dt>
                   <dd class="mt-1 min-h-9 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-900">
-                    {displayValue(field, value)}
+                    {#if field.art === 'image' || field.art === 'images'}
+                      {@const previews = imagePreviewsFor(block.compId, index, field, value)}
+                      {#if previews.length > 0}
+                        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {#each previews as preview, imageIndex (`${field.name}-${imageIndex}`)}
+                            <img src={preview} alt="{field.name} {imageIndex + 1}" class="h-24 w-full rounded-md border border-gray-200 bg-white object-contain" />
+                          {/each}
+                        </div>
+                      {:else}
+                        {displayValue(field, value)}
+                      {/if}
+                    {:else}
+                      {displayValue(field, value)}
+                    {/if}
                   </dd>
                 </div>
               {/if}

@@ -55,6 +55,16 @@ describe('serializeAsset', () => {
     expect(parseAsset(serializeAsset(input)).direct['Mängelfotos']).toBe(photos);
   });
 
+  it('round-trips decimal values and image paths inside reusable component blocks', () => {
+    const photos = JSON.stringify(['fotos/asset-1/photo-0.jpg', 'fotos/asset-1/photo-1.jpg']);
+    const input = {
+      direct: { id: 'asset-1' },
+      blocks: { pruefung: { '0': { Ableitstrom: '0.42', Mängelfotos: photos } } }
+    };
+
+    expect(parseAsset(serializeAsset(input)).blocks).toEqual(input.blocks);
+  });
+
   it('schreibt leere Werte ohne trailing-Whitespace', () => {
     const input = {
       direct: { id: 'x' },

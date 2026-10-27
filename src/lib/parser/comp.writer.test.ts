@@ -17,4 +17,14 @@ describe('serializeComponent', () => {
   it('schreibt leere Komponenten mit dem ID-Namen', () => {
     expect(serializeComponent({ id: 'port', name: 'Port', fields: [] })).toBe('name: Port\n');
   });
+
+  it('round-trips decimal and multiple-image component fields', () => {
+    const source = [
+      'name: Prüfung',
+      'feld: ableitstrom, decimal, optional',
+      'feld: maengelfotos, images, optional'
+    ].join('\n');
+
+    expect(serializeComponent(parseComponent('pruefung', source))).toBe(source + '\n');
+  });
 });

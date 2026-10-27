@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
+import { vi } from 'vitest';
 import { describe, expect, it } from 'vitest';
 import AssetBlocks from './AssetBlocks.svelte';
 import type { AssetBlockValues } from './asset-blocks.helpers';
@@ -90,5 +91,70 @@ describe('AssetBlocks', () => {
 
     expect(screen.getByText('HDMI OUT')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /hinzufügen/i })).toBeNull();
+  });
+
+  it('rendert Kommazahlen und Mehrfachbilder in wiederverwendbaren Komponenten', async () => {
+    const onImageSelect = vi.fn();
+    const onImagesSelect = vi.fn();
+    render(AssetBlocks, {
+      props: {
+        definitions,
+        components: [{
+          id: 'port',
+          name: 'Port',
+          fields: [
+            { nr: 0, name: 'Ableitstrom', art: 'decimal', optionen: null, pflicht: false, sensitiv: false },
+            { nr: 1, name: 'Typenschild', art: 'image', optionen: null, pflicht: false, sensitiv: false },
+            { nr: 2, name: 'Mängelfotos', art: 'images', optionen: null, pflicht: false, sensitiv: false }
+          ]
+        }],
+        values: { port: { '0': {} } },
+        editable: true,
+        onValueChange: () => {},
+        onImageSelect,
+        onImagesSelect
+      }
+    });
+
+    const decimal = screen.getByLabelText('Ableitstrom') as HTMLInputElement;
+    expect(decimal.type).toBe('number');
+    expect(decimal.step).toBe('any');
+
+    const singleInput = screen.getByLabelText('Bild für Port 1: Typenschild') as HTMLInputElement;
+    const labelPhoto = new File(['label'], 'label.jpg', { type: 'image/jpeg' });
+    await fireEvent.change(singleInput, { target: { files: [labelPhoto] } });
+    expect(onImageSelect).toHaveBeenCalledWith('port', '0', 'Typenschild', labelPhoto);
+
+    const input = screen.getByLabelText('Bilder für Port 1: Mängelfotos') as HTMLInputElement;
+    expect(input.multiple).toBe(true);
+    const photos = [new File(['one'], 'one.jpg', { type: 'image/jpeg' })];
+    await fireEvent.change(input, { target: { files: photos } });
+    expect(onImagesSelect).toHaveBeenCalledWith('port', '0', 'Mängelfotos', photos);
+  });
+
+  it('zeigt gespeicherte Komponentenbilder im Nur-Ansicht-Modus als Vorschau', () => {
+    render(AssetBlocks, {
+      props: {
+        definitions,
+        components: [{
+          id: 'port',
+          name: 'Port',
+          fields: [{
+            nr: 0,
+            name: 'Mängelfotos',
+            art: 'images',
+            optionen: null,
+            pflicht: false,
+            sensitiv: false
+          }]
+        }],
+        values: { port: { '0': { Mängelfotos: '["fotos/a.jpg"]' } } },
+        imageUrls: { 'fotos/a.jpg': 'blob:photo' },
+        editable: false,
+        onValueChange: () => {}
+      }
+    });
+
+    expect((screen.getByRole('img', { name: 'Mängelfotos 1' }) as HTMLImageElement).src).toContain('blob:photo');
   });
 });

@@ -90,7 +90,9 @@ HDMI-Kabels. Diese Felder werden pro Asset-Instanz vorbelegt und sind dort
 schreibgeschützt; nicht festgelegte Komponentenfelder bleiben am Asset
 bearbeitbar. Die übrigen Felder werden ausschließlich an der Komponente
 gepflegt, erscheinen bei Assets als wiederholbare Gruppen und werden in der
-`.asset`-Datei abgelegt. Der Feldtyp **Asset-Referenz** zeigt
+`.asset`-Datei abgelegt. Komponenten unterstützen dieselben Feldtypen wie
+direkte Typfelder, darunter **Kommazahl**, **Bild** und **Mehrere Bilder**;
+Komponentenbilder werden ebenfalls in Git LFS gespeichert. Der Feldtyp **Asset-Referenz** zeigt
 Assets der angegebenen kompatiblen Typen einschließlich ihrer Untertypen zur
 Auswahl an; ohne Typ-Einschränkung stehen alle Assets zur Verfügung.
 

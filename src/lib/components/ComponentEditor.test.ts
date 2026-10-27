@@ -45,4 +45,37 @@ describe('ComponentEditor', () => {
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByRole('alert').textContent).toContain('Bitte gib eine Komponenten-ID ein.');
   });
+
+  it('offers and saves decimal and multiple-image component fields', async () => {
+    const onSave = vi.fn();
+    render(ComponentEditor, {
+      props: { component: null, onSave, onCancel: vi.fn() }
+    });
+
+    await fireEvent.input(screen.getByLabelText('Komponenten-ID'), { target: { value: 'pruefung' } });
+    await fireEvent.input(screen.getByLabelText('Anzeigename'), { target: { value: 'Prüfung' } });
+
+    await fireEvent.click(screen.getByRole('button', { name: '+ Feld hinzufügen' }));
+    await fireEvent.input(screen.getByLabelText('Feldname'), { target: { value: 'Ableitstrom' } });
+    await fireEvent.change(screen.getByLabelText('Eingabetyp'), { target: { value: 'decimal' } });
+
+    await fireEvent.click(screen.getByRole('button', { name: '+ Feld hinzufügen' }));
+    await fireEvent.input(screen.getAllByLabelText('Feldname')[1], { target: { value: 'Typenschild' } });
+    await fireEvent.change(screen.getAllByLabelText('Eingabetyp')[1], { target: { value: 'image' } });
+
+    await fireEvent.click(screen.getByRole('button', { name: '+ Feld hinzufügen' }));
+    await fireEvent.input(screen.getAllByLabelText('Feldname')[2], { target: { value: 'Mängelfotos' } });
+    await fireEvent.change(screen.getAllByLabelText('Eingabetyp')[2], { target: { value: 'images' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(onSave).toHaveBeenCalledWith({
+      id: 'pruefung',
+      name: 'Prüfung',
+      fields: [
+        { nr: 0, name: 'Ableitstrom', art: 'decimal', optionen: null, pflicht: false, sensitiv: false },
+        { nr: 1, name: 'Typenschild', art: 'image', optionen: null, pflicht: false, sensitiv: false },
+        { nr: 2, name: 'Mängelfotos', art: 'images', optionen: null, pflicht: false, sensitiv: false }
+      ]
+    });
+  });
 });

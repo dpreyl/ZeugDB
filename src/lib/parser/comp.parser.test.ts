@@ -23,5 +23,14 @@ describe('parseComponent', () => {
 
     expect(result.fields[0].optionen).toBe('hdmi-kabel');
   });
+
+  it('parst Kommazahl- und Bildfelder in wiederverwendbaren Komponenten', () => {
+    const result = parseComponent('pruefung', [
+      'feld: ableitstrom, decimal, optional',
+      'feld: maengelfotos, images, optional'
+    ].join('\n'));
+
+    expect(result.fields.map(field => field.art)).toEqual(['decimal', 'images']);
+  });
 });
 

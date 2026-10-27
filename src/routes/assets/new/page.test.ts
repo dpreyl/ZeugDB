@@ -222,4 +222,62 @@ describe('Asset-Neuanlage mit Bildfeldern', () => {
       })
     }));
   });
+
+  it('lädt Bilder aus wiederverwendbaren Komponenten vor der Asset-Anlage hoch', async () => {
+    enterEditMode();
+    mocks.types.all = [{
+      id: 'geraet',
+      name: 'Gerät',
+      fields: [],
+      blocks: [{ compId: 'pruefung', min: 1, max: 1 }]
+    }] as any;
+    mocks.components.all = [{
+      id: 'pruefung',
+      name: 'Prüfung',
+      fields: [{ nr: 0, name: 'Mängelfotos', art: 'images', optionen: null, pflicht: false, sensitiv: false }]
+    }] as any;
+    mocks.fotos.uploadFoto
+      .mockResolvedValueOnce('fotos/asset-draft/block-0.jpg')
+      .mockResolvedValueOnce('fotos/asset-draft/block-1.jpg');
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:preview'),
+      revokeObjectURL: vi.fn()
+    });
+    render(NewAssetPage);
+
+    await fireEvent.input(screen.getByLabelText('Bezeichnung'), { target: { value: 'Gerät mit Prüfung' } });
+    const files = [
+      new File(['front'], 'mangel-vorne.jpg', { type: 'image/jpeg' }),
+      new File(['rear'], 'mangel-hinten.jpg', { type: 'image/jpeg' })
+    ];
+    files.forEach((file, index) => Object.defineProperty(file, 'arrayBuffer', {
+      value: vi.fn().mockResolvedValue(new Uint8Array([index]).buffer)
+    }));
+    await fireEvent.change(screen.getByLabelText('Bilder für Prüfung 1: Mängelfotos'), {
+      target: { files }
+    });
+    const draftKey = JSON.stringify(['pruefung', '0', 'Mängelfotos']);
+    await waitFor(() => expect(mocks.draftFiles['asset:new']?.[draftKey]).toEqual(files));
+    cleanup();
+    render(NewAssetPage);
+    expect(await screen.findByRole('img', { name: 'Mängelfotos 1' })).toBeTruthy();
+    await fireEvent.submit(screen.getByRole('heading', { name: 'Neues Asset' }).closest('form')!);
+
+    await waitFor(() => expect(mocks.assets.createAsset).toHaveBeenCalledWith(expect.objectContaining({
+      fields: expect.objectContaining({
+        fotos: 'fotos/asset-draft/block-0.jpg,fotos/asset-draft/block-1.jpg'
+      }),
+      blocks: {
+        pruefung: {
+          '0': {
+            Mängelfotos: JSON.stringify([
+              'fotos/asset-draft/block-0.jpg',
+              'fotos/asset-draft/block-1.jpg'
+            ])
+          }
+        }
+      }
+    })));
+    expect(mocks.draftFiles['asset:new']).toBeUndefined();
+  });
 });

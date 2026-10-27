@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ComponentDefinition, FieldType } from '$lib/parser/types';
   import type { TypeFieldDraft } from './type-form.helpers';
+  import { fieldTypes } from './field-types';
 
   type Props = {
     component: ComponentDefinition | null;
@@ -13,17 +14,6 @@
   let name = $state('');
   let fields = $state<TypeFieldDraft[]>([]);
   let errors = $state<string[]>([]);
-
-  const fieldTypes = [
-    { value: 'text', label: 'Text' },
-    { value: 'number', label: 'Zahl' },
-    { value: 'date', label: 'Datum' },
-    { value: 'boolean', label: 'Ja/Nein' },
-    { value: 'dropdown', label: 'Auswahlliste' },
-    { value: 'uuid', label: 'UUID' },
-    { value: 'asset_ref', label: 'Asset-Referenz' },
-    { value: 'auswahl', label: 'Auswahl (alt)' }
-  ];
 
   $effect(() => {
     id = component?.id ?? '';
