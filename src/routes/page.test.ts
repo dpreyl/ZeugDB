@@ -1,16 +1,19 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getAssetStore, resetAssetStore } from '$lib/stores/assets.store.svelte';
+import { getLocationsStore, resetLocationsStore } from '$lib/stores/locations.store.svelte';
 import Page from './+page.svelte';
 
 describe('Assets-Seite', () => {
   beforeEach(() => {
     resetAssetStore();
+    resetLocationsStore();
   });
 
   afterEach(() => {
     cleanup();
     resetAssetStore();
+    resetLocationsStore();
   });
 
   it('zeigt Assets an, die nach dem initialen Seiten-Load in den Store geladen werden', async () => {
@@ -41,5 +44,35 @@ describe('Assets-Seite', () => {
     expect(screen.getByText('Projektor Saal 1')).toBeTruthy();
     expect(screen.queryByText('HDMI Kabel')).toBeNull();
     expect(screen.getByText(/1 von 2 Einträgen/)).toBeTruthy();
+  });
+
+  it('zeigt lesbare Standortpfade und filtert Assets über den übergeordneten Standort', async () => {
+    getLocationsStore().setAll([
+      { id: 'house-1', name: 'Haus 1', art: 'raum' },
+      { id: 'room-a', name: 'Raum A', eltern: 'house-1', art: 'raum' },
+      { id: 'house-2', name: 'Haus 2', art: 'raum' },
+      { id: 'room-b', name: 'Raum B', eltern: 'house-2', art: 'raum' }
+    ]);
+    const store = getAssetStore();
+    store.createAsset({
+      id: 'asset-a',
+      type: 'projektor',
+      location: 'room-a',
+      fields: { bezeichnung: 'Projektor Haus 1' }
+    });
+    store.createAsset({
+      id: 'asset-b',
+      type: 'projektor',
+      location: 'room-b',
+      fields: { bezeichnung: 'Projektor Haus 2' }
+    });
+    render(Page, { props: { data: { assets: [] } } as never });
+
+    expect(screen.getByText('Haus 1 › Raum A')).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Filter Standort' }));
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'Haus 2' }));
+
+    expect(screen.getByText('Projektor Haus 1')).toBeTruthy();
+    expect(screen.queryByText('Projektor Haus 2')).toBeNull();
   });
 });

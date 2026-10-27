@@ -1,16 +1,21 @@
 <script lang="ts">
   import { base } from '$app/paths';
   import ColumnFilter from '$lib/components/ColumnFilter.svelte';
+  import LocationFilter from '$lib/components/LocationFilter.svelte';
   import {
     filterAssetRows,
     getAssetFilterOptions,
+    getLocationDisplayName,
+    getLocationFilterOptions,
     type AssetOverviewField,
     type AssetOverviewFilters
   } from '$lib/components/asset-overview.helpers';
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
   import { getAssetStore } from '$lib/stores/assets.store.svelte';
+  import { getLocationsStore } from '$lib/stores/locations.store.svelte';
 
   const assetStore = getAssetStore();
+  const locationsStore = getLocationsStore();
   const editMode = getEditMode();
   let filters = $state<AssetOverviewFilters>({});
 
@@ -21,6 +26,7 @@
       bezeichnung: assetStore.getField(asset.id, 'bezeichnung')?.trim() || 'Ohne Bezeichnung',
       typ: asset.type,
       standort: asset.location || '—',
+      standortName: getLocationDisplayName(asset.location || '—', locationsStore.all),
       geaendert: asset.geaendert?.slice(0, 10) || '—'
     }));
   });
@@ -72,9 +78,8 @@
           </th>
           <th class="px-4 py-2 text-left font-medium text-gray-600">
             Standort
-            <ColumnFilter
-              label="Standort"
-              options={getAssetFilterOptions(assets, 'standort')}
+            <LocationFilter
+              options={getLocationFilterOptions(locationsStore.all, assets)}
               selected={filters.standort ?? null}
               onChange={(selected) => setFilter('standort', selected)}
             />
@@ -108,7 +113,7 @@
                 {/if}
               </td>
               <td class="px-4 py-2 capitalize">{asset.typ}</td>
-              <td class="px-4 py-2 text-gray-600">{asset.standort}</td>
+              <td class="px-4 py-2 text-gray-600">{asset.standortName}</td>
               <td class="px-4 py-2 text-gray-500">{asset.geaendert}</td>
               <td class="px-4 py-2 text-right">
                 <a href="{base}/assets/{asset.id}" class="text-blue-600 hover:underline">Öffnen</a>

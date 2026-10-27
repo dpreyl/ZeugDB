@@ -98,7 +98,9 @@ Sie wird in der Asset-Übersicht anstelle der technischen ID angezeigt; Assets
 aus älteren Repositories ohne Bezeichnung sind dort als „Ohne Bezeichnung“
 markiert, bis ein Name eingetragen wird. Die Spalten Bezeichnung, Typ,
 Standort und Änderungsdatum besitzen Filter: Im Spaltenkopf lassen sich die
-vorhandenen Werte einzeln ein- oder ausblenden.
+vorhandenen Werte einzeln ein- oder ausblenden. Der Standortfilter bildet die
+Standorthierarchie ab: **Auswahl leeren** und anschließend etwa „Haus 1“
+auswählen, um Assets aus dem Haus und allen darunterliegenden Räumen zu sehen.
 
 ## Entwicklung
 
