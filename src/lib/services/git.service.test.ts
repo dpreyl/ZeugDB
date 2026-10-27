@@ -6,6 +6,7 @@ import {
   cloneRepo,
   pushToRemote,
   pullFromRemote,
+  pullToStores,
   commitChanges,
   commitAllToGit,
   isRepoInitialized,
@@ -169,6 +170,7 @@ describe('git.service — Push', () => {
     await pushToRemote(config, 'main', progressCallback);
 
     expect(mockPush).toHaveBeenCalledWith({
+      url: config.url,
       auth: { username: 'testuser', token: 'secret-token' },
       branch: 'main',
       onprogress: progressCallback
@@ -189,6 +191,7 @@ describe('git.service — Push', () => {
     await pushToRemote(config);
 
     expect(mockPush).toHaveBeenCalledWith({
+      url: config.url,
       auth: { username: 'testuser', token: 'secret-token' },
       branch: undefined,
       onprogress: undefined
@@ -236,10 +239,34 @@ describe('git.service — Pull', () => {
     await pullFromRemote(config, 'Author', 'author@example.com', mockDb);
 
     expect(mockPull).toHaveBeenCalledWith({
+      url: config.url,
       auth: { username: 'testuser', token: 'secret-token' },
       author: { name: 'Author', email: 'author@example.com' },
       onprogress: undefined
     });
+  });
+
+  it('übergibt die konfigurierte URL beim Pull in die Stores', async () => {
+    const mockPull = vi.fn().mockResolvedValue(undefined);
+    mockGitRepo({ pull: mockPull });
+    const loader = await import('./git-store-loader');
+    vi.spyOn(loader, 'loadGitFsToStores').mockResolvedValue();
+    const syncMetaModule = await import('$lib/stores/sync-meta.svelte');
+    vi.spyOn(syncMetaModule, 'getSyncMeta').mockReturnValue({
+      update: vi.fn()
+    } as unknown as ReturnType<typeof syncMetaModule.getSyncMeta>);
+    const config: GitConfig = {
+      url: 'http://phone-lan/repo',
+      username: 'testuser',
+      token: 'token'
+    };
+
+    await pullToStores(config, 'Author', 'author@example.com');
+
+    expect(mockPull).toHaveBeenCalledWith(expect.objectContaining({
+      url: config.url,
+      auth: { username: config.username, token: config.token }
+    }));
   });
 });
 
@@ -514,8 +541,9 @@ describe('git.service — syncEditBranch', () => {
       editMode as unknown as import('$lib/stores/edit-mode.svelte').EditMode
     );
 
+    const config = { url: 'http://phone-lan/repo', username: 'test', token: 'token' };
     await syncEditBranch(
-      { url: 'http://example.com/repo.git', username: 'test', token: 'token' },
+      config,
       'Author',
       'author@example.com'
     );
@@ -531,7 +559,14 @@ describe('git.service — syncEditBranch', () => {
     expect(mockFetch.mock.invocationCallOrder[0]).toBeLessThan(mockCheckout.mock.invocationCallOrder[0]);
     expect(mockCheckout.mock.invocationCallOrder[0]).toBeLessThan(mockMerge.mock.invocationCallOrder[0]);
     expect(mockMerge.mock.invocationCallOrder[0]).toBeLessThan(mockMerge.mock.invocationCallOrder[1]);
-    expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({ branch: 'main' }));
+    expect(mockFetch).toHaveBeenCalledWith({
+      url: config.url,
+      auth: { username: config.username, token: config.token }
+    });
+    expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
+      url: config.url,
+      branch: 'main'
+    }));
     expect(flushPendingLfs).toHaveBeenCalledOnce();
     expect(mockCheckout).toHaveBeenLastCalledWith('main', true);
     expect(mockPush.mock.invocationCallOrder[0]).toBeLessThan(

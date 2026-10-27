@@ -103,6 +103,7 @@ export async function pushToRemote(
 ): Promise<string[]> {
   const repo = await getGitRepo();
   return repo.push({
+    url: config.url,
     auth: { username: config.username, token: config.token },
     branch,
     onprogress
@@ -130,6 +131,7 @@ export async function syncPushWithLfs(
   onprogress?.({ message: 'Git-Änderungen puschen...' });
   const repo = await getGitRepo();
   return repo.push({
+    url: config.url,
     auth: { username: config.username, token: config.token },
     branch,
     onprogress
@@ -148,6 +150,7 @@ export async function pullFromRemote(
 ): Promise<void> {
   const repo = await getGitRepo();
   await repo.pull({
+    url: config.url,
     auth: { username: config.username, token: config.token },
     author: { name: authorName, email: authorEmail },
     onprogress
@@ -173,6 +176,7 @@ export async function pullToStores(
 ): Promise<void> {
   const repo = await getGitRepo();
   await repo.pull({
+    url: config.url,
     auth: { username: config.username, token: config.token },
     author: { name: authorName, email: authorEmail },
     onprogress
@@ -314,7 +318,10 @@ export async function syncEditBranch(
   onprogress?.({ message: 'Hole Änderungen vom Server...' });
 
   // 1. Fetch
-  await repo.fetchFromRemote({ auth: { username: config.username, token: config.token } });
+  await repo.fetchFromRemote({
+    url: config.url,
+    auth: { username: config.username, token: config.token }
+  });
 
   // 2. Zu main wechseln
   onprogress?.({ message: 'Wechsle zu main...' });
@@ -352,6 +359,7 @@ export async function syncEditBranch(
   onprogress?.({ message: 'LFS-Binaries hochladen...' });
   await getFotoStore().flushPendingLfs();
   await repo.push({
+    url: config.url,
     auth: { username: config.username, token: config.token },
     branch: 'main',
     onprogress

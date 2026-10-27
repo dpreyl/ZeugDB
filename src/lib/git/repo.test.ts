@@ -35,6 +35,7 @@ vi.mock('isomorphic-git', async (importOriginal) => {
     listFiles: vi.fn().mockResolvedValue([]),
     statusMatrix: vi.fn().mockResolvedValue([]),
     listRemotes: vi.fn().mockResolvedValue([{ remote: 'origin', url: 'http://test/repo' }]),
+    addRemote: vi.fn().mockResolvedValue(undefined),
     add: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
     branch: vi.fn().mockResolvedValue(undefined),
@@ -84,6 +85,58 @@ describe('GitRepo Branch-Management', () => {
 
     expect(git.clone).toHaveBeenCalled();
     expect(flush).toHaveBeenCalledOnce();
+  });
+
+  it('verwendet beim Pull die aktuell konfigurierte Remote-URL', async () => {
+    await repo.pull({
+      url: 'http://phone-lan/repo',
+      auth: { username: 'admin', token: 'token' },
+      author: { name: 'Test', email: 'test@example.com' }
+    });
+
+    expect(git.pull).toHaveBeenCalledWith(expect.objectContaining({
+      url: 'http://phone-lan/repo',
+      remote: 'origin'
+    }));
+    expect(git.addRemote).toHaveBeenCalledWith(expect.objectContaining({
+      remote: 'origin',
+      url: 'http://phone-lan/repo',
+      force: true
+    }));
+  });
+
+  it('verwendet beim Push die aktuell konfigurierte Remote-URL', async () => {
+    await repo.push({
+      url: 'http://phone-lan/repo',
+      auth: { username: 'admin', token: 'token' }
+    });
+
+    expect(git.push).toHaveBeenCalledWith(expect.objectContaining({
+      url: 'http://phone-lan/repo',
+      remote: 'origin'
+    }));
+    expect(git.addRemote).toHaveBeenCalledWith(expect.objectContaining({
+      remote: 'origin',
+      url: 'http://phone-lan/repo',
+      force: true
+    }));
+  });
+
+  it('verwendet beim Fetch die aktuell konfigurierte Remote-URL', async () => {
+    await repo.fetchFromRemote({
+      url: 'http://phone-lan/repo',
+      auth: { username: 'admin', token: 'token' }
+    });
+
+    expect(git.fetch).toHaveBeenCalledWith(expect.objectContaining({
+      url: 'http://phone-lan/repo',
+      remote: 'origin'
+    }));
+    expect(git.addRemote).toHaveBeenCalledWith(expect.objectContaining({
+      remote: 'origin',
+      url: 'http://phone-lan/repo',
+      force: true
+    }));
   });
 
   it('persistiert Branch- und HEAD-Änderungen vor Rückkehr', async () => {

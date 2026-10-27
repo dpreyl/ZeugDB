@@ -153,16 +153,20 @@ export class GitRepo implements RepoFs {
    * Pusht Änderungen zum Remote.
    */
   async push(opts: {
+    url?: string;
     remote?: string;
     branch?: string;
     auth: GitAuth;
     onprogress?: (progress: GitProgress) => void;
   }): Promise<string[]> {
+    const remote = opts.remote ?? 'origin';
+    await this.updateRemoteUrl(remote, opts.url);
     await git.push({
       fs: this.fs,
       http: HTTP,
       dir: '/',
-      remote: opts.remote ?? 'origin',
+      remote,
+      url: opts.url,
       ref: opts.branch ? `refs/heads/${opts.branch}` : undefined,
       onProgress: (p: { message?: string; loaded: number; total: number }) => {
         opts.onprogress?.({
@@ -182,17 +186,21 @@ export class GitRepo implements RepoFs {
    * Zieht Änderungen vom Remote.
    */
   async pull(opts: {
+    url?: string;
     remote?: string;
     branch?: string;
     auth: GitAuth;
     author: { name: string; email: string };
     onprogress?: (progress: GitProgress) => void;
   }): Promise<void> {
+    const remote = opts.remote ?? 'origin';
+    await this.updateRemoteUrl(remote, opts.url);
     await git.pull({
       fs: this.fs,
       http: HTTP,
       dir: '/',
-      remote: opts.remote ?? 'origin',
+      remote,
+      url: opts.url,
       ref: opts.branch ? `refs/heads/${opts.branch}` : undefined,
       onProgress: (p: { message?: string; loaded: number; total: number }) => {
         opts.onprogress?.({
@@ -376,19 +384,28 @@ export class GitRepo implements RepoFs {
    * Fetcht Änderungen vom Remote ohne Merge.
    */
   async fetchFromRemote(opts: {
+    url?: string;
     remote?: string;
     auth: { username: string; token: string };
   }): Promise<void> {
+    const remote = opts.remote ?? 'origin';
+    await this.updateRemoteUrl(remote, opts.url);
     await git.fetch({
       fs: this.fs,
       http: HTTP,
       dir: '/',
-      remote: opts.remote ?? 'origin',
+      remote,
+      url: opts.url,
       headers: {
         'Authorization': `Basic ${btoa(`${opts.auth.username}:${opts.auth.token}`)}`
       }
     });
     await this.promises.flush();
+  }
+
+  private async updateRemoteUrl(remote: string, url?: string): Promise<void> {
+    if (!url) return;
+    await git.addRemote({ fs: this.fs, dir: '/', remote, url, force: true });
   }
 
   /**
