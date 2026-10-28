@@ -5,8 +5,14 @@ export type InspectionCandidate = {
   designation: string;
   type: string;
   typeName: string;
+  locationId: string | null;
   location: string;
   searchValues: string[];
+};
+
+export type InspectionSearchScope = {
+  locationId: string;
+  allLocations: boolean;
 };
 
 export type InspectionMeasurement = {
@@ -40,13 +46,15 @@ const MEASUREMENTS_BY_PROTECTION_CLASS: Record<string, InspectionMeasurement[]> 
 
 export function searchInspectionCandidates(
   candidates: InspectionCandidate[],
-  query: string
+  query: string,
+  scope: InspectionSearchScope
 ): InspectionCandidate[] {
   const normalizedQuery = normalizeSearchText(query.trim());
   if (!normalizedQuery) return [];
 
   return candidates
     .filter(candidate =>
+      (scope.allLocations || (scope.locationId !== '' && candidate.locationId === scope.locationId)) &&
       [
         candidate.id,
         candidate.designation,

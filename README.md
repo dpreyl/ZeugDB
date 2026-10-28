@@ -64,7 +64,8 @@ zurück. Ein neu gestarteter Edit-Modus erhält weiterhin einen eigenen Branch.
 ## DGUV-Prüfungsassistent
 
 Über **DGUV-Prüfung** können Geräte in einem Raum geprüft werden. Die Suche
-berücksichtigt Geräte aus allen Räumen; beim Speichern wird ein vorhandenes
+zeigt standardmäßig nur Geräte aus dem ausgewählten Raum; über **Alle Räume
+durchsuchen** lässt sich die Suche erweitern. Beim Speichern wird ein vorhandenes
 Gerät dem ausgewählten Raum zugeordnet. Prüfer und Raum bleiben auf diesem
 Gerät für Folgeprüfungen vorgemerkt. Der Assistent fragt Schutzklasse,
 passende Messwerte sowie Prüfergebnis ab und bietet optionale Übersichts- und

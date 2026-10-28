@@ -7,13 +7,14 @@ import {
 } from './dguv.helpers';
 
 describe('DGUV assistant helpers', () => {
-  it('sucht über alle Räume nach Bezeichnung oder Gerätetyp', () => {
+  it('sucht standardmäßig nur im ausgewählten Raum und optional raumübergreifend', () => {
     const candidates: InspectionCandidate[] = [
       {
         id: 'asset-1',
         designation: 'Kaffeemaschine',
         type: 'kaffeemaschine',
         typeName: 'Kaffeemaschine',
+        locationId: 'room-1',
         location: 'Raum 1',
         searchValues: ['Inventar 42']
       },
@@ -22,15 +23,36 @@ describe('DGUV assistant helpers', () => {
         designation: 'Beamer',
         type: 'projektor',
         typeName: 'Projektor',
+        locationId: 'room-2',
         location: 'Raum 2',
         searchValues: []
       }
     ];
 
-    expect(searchInspectionCandidates(candidates, 'kaffee')).toEqual([candidates[0]]);
-    expect(searchInspectionCandidates(candidates, 'projektor')).toEqual([candidates[1]]);
-    expect(searchInspectionCandidates(candidates, 'inventar 42')).toEqual([candidates[0]]);
-    expect(searchInspectionCandidates(candidates, 'nicht vorhanden')).toEqual([]);
+    expect(searchInspectionCandidates(candidates, 'kaffee', {
+      locationId: 'room-1',
+      allLocations: false
+    })).toEqual([candidates[0]]);
+    expect(searchInspectionCandidates(candidates, 'projektor', {
+      locationId: 'room-1',
+      allLocations: false
+    })).toEqual([]);
+    expect(searchInspectionCandidates(candidates, 'projektor', {
+      locationId: 'room-1',
+      allLocations: true
+    })).toEqual([candidates[1]]);
+    expect(searchInspectionCandidates(candidates, 'inventar 42', {
+      locationId: '',
+      allLocations: true
+    })).toEqual([candidates[0]]);
+    expect(searchInspectionCandidates(candidates, 'kaffee', {
+      locationId: '',
+      allLocations: false
+    })).toEqual([]);
+    expect(searchInspectionCandidates(candidates, 'nicht vorhanden', {
+      locationId: 'room-1',
+      allLocations: false
+    })).toEqual([]);
   });
 
   it('fragt für SK I und SK II jeweils die passenden Messwerte ab', () => {

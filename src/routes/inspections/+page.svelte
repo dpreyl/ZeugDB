@@ -27,7 +27,7 @@
 
   let examiner = $state('');
   let locationId = $state('');
-  let searchQuery = $state('');
+  let searchQuery = $state(''), searchAllLocations = $state(false);
   let selectedAssetId = $state('');
   let creatingNew = $state(false);
   let designation = $state('');
@@ -57,7 +57,7 @@
         .flatMap(instances => Object.values(instances).flatMap(values => Object.values(values)));
       return {
         id: asset.id,
-        type: asset.type,
+        type: asset.type, locationId: asset.location,
         typeName,
         designation: fields.bezeichnung?.trim() || 'Ohne Bezeichnung',
         location: asset.location ? locations.findById(asset.location)?.name ?? asset.location : 'Kein Standort',
@@ -65,7 +65,7 @@
       };
     });
   });
-  const matches = $derived(searchInspectionCandidates(candidates, searchQuery));
+  const matches = $derived(searchInspectionCandidates(candidates, searchQuery, { locationId, allLocations: searchAllLocations }));
   const selectedAsset = $derived(selectedAssetId ? assets.findById(selectedAssetId) : undefined);
   const selectedFields = $derived.by(() => {
     assets.fieldsVersion;
@@ -131,6 +131,7 @@
 
   function resetForNextInspection() {
     searchQuery = '';
+    searchAllLocations = false;
     selectedAssetId = '';
     creatingNew = false;
     designation = '';
@@ -299,10 +300,9 @@
         </div>
         <p class="mt-3 text-xs text-gray-500">Prüfer und Raum werden für weitere Prüfungen auf diesem Gerät gemerkt.</p>
       </section>
-
       <section class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <h3 class="font-semibold text-gray-900">Gerät finden</h3>
-        <p class="mt-1 text-sm text-gray-600">Suche berücksichtigt alle Räume, da Geräte umgestellt werden können.</p>
+        <p class="mt-1 text-sm text-gray-600">Standardmäßig wird nur im ausgewählten Raum gesucht.</p>
         <label class="mt-3 block text-sm font-medium text-gray-700">
           Gerät oder Typ suchen
           <input
@@ -312,6 +312,9 @@
             placeholder="Bezeichnung, Geräteart, Inventarnummer …"
             class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
           />
+        </label>
+        <label class="mt-2 inline-flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" aria-label="Alle Räume durchsuchen" bind:checked={searchAllLocations} />
+          Alle Räume durchsuchen
         </label>
 
         {#if searchQuery.trim() && !selectedAsset && !creatingNew}
@@ -331,7 +334,7 @@
               {/each}
             </ul>
           {:else}
-            <p class="mt-3 text-sm text-gray-600">Kein Gerät gefunden.</p>
+            <p class="mt-3 text-sm text-gray-600">{!locationId && !searchAllLocations ? 'Zuerst einen Prüfungsraum auswählen.' : 'Kein Gerät gefunden.'}</p>
           {/if}
           <button
             type="button"
@@ -375,7 +378,6 @@
           <p class="mt-2 text-xs font-medium text-gray-600">Erstprüfung</p>
         {/if}
       </section>
-
       {#if selectedAsset || creatingNew}
         <section class="space-y-4 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <h3 class="font-semibold text-gray-900">Gerätedaten und Prüfung</h3>
@@ -402,7 +404,6 @@
               {/if}
             </select>
           </label>
-
           <div class="grid gap-3 sm:grid-cols-2">
             {#each photoRoles as { role, label, path: currentPath }}
               <label class="block rounded-md border border-gray-200 p-3 text-sm font-medium text-gray-700">
@@ -428,7 +429,6 @@
               </label>
             {/each}
           </div>
-
           {#if measurementFields.length}
             <fieldset class="space-y-3 border-t border-gray-100 pt-4">
               <legend class="font-medium text-gray-900">Messwerte für Schutzklasse {protectionClass}</legend>

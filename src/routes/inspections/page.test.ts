@@ -59,8 +59,15 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('DGUV-Prüfungsassistent', () => {
-  it('findet vorhandene Geräte raumübergreifend und speichert eine Wiederholungsprüfung', async () => {
-    mocks.assets.all = [{ id: 'asset-existing', type: 'elektro', location: 'room-old' }];
+  it('sucht zuerst im ausgewählten Raum, erlaubt alle Räume und speichert die Prüfung', async () => {
+    mocks.assets.all = [
+      { id: 'asset-current', type: 'elektro', location: 'room-current' },
+      { id: 'asset-existing', type: 'elektro', location: 'room-old' }
+    ];
+    mocks.assets.fields['asset-current'] = {
+      bezeichnung: 'Bohrmaschine',
+      Schutzklasse: 'I'
+    };
     mocks.assets.fields['asset-existing'] = {
       bezeichnung: 'Akkuschrauber',
       Schutzklasse: 'I',
@@ -80,6 +87,10 @@ describe('DGUV-Prüfungsassistent', () => {
     await fireEvent.input(screen.getByLabelText('Gerät oder Typ suchen'), {
       target: { value: 'Elektrogerät' }
     });
+    expect(screen.getByRole('button', { name: /Bohrmaschine/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Akkuschrauber/ })).toBeNull();
+    await fireEvent.click(screen.getByLabelText('Alle Räume durchsuchen'));
+    expect(screen.getByRole('button', { name: /Akkuschrauber/ })).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: /Akkuschrauber/ }));
 
     expect(screen.getByText('Wiederholungsprüfung')).toBeTruthy();
