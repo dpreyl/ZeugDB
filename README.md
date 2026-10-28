@@ -65,9 +65,11 @@ zurück. Ein neu gestarteter Edit-Modus erhält weiterhin einen eigenen Branch.
 
 Über **DGUV-Prüfung** können Geräte in einem Raum geprüft werden. Die Suche
 zeigt standardmäßig nur Geräte aus dem ausgewählten Raum; über **Alle Räume
-durchsuchen** lässt sich die Suche erweitern. Beim Speichern wird ein vorhandenes
-Gerät dem ausgewählten Raum zugeordnet. Treffer zeigen Typ sowie vorhandene
-Identifikationsangaben wie Hersteller, Modell und Inventarnummer statt der internen Asset-ID.
+durchsuchen** lässt sich die Suche erweitern. Die Geräteliste erscheint auch
+ohne Suchtext und blendet Geräte mit einer DGUV-Prüfung innerhalb der letzten
+18 Monate aus. Beim Speichern wird ein vorhandenes Gerät dem ausgewählten Raum
+zugeordnet. Treffer zeigen Typ sowie vorhandene Identifikationsangaben wie
+Hersteller, Modell und Inventarnummer statt der internen Asset-ID.
 Prüfer und Raum bleiben auf diesem
 Gerät für Folgeprüfungen vorgemerkt. Der Assistent fragt Schutzklasse,
 passende Messwerte sowie Prüfergebnis ab und bietet optionale Übersichts- und

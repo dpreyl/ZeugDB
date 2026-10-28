@@ -14,7 +14,7 @@
   import { photoRoleField, type PhotoRole } from '$lib/components/asset-photo.helpers';
   import type { AssetBlockValues } from '$lib/components/asset-blocks.helpers';
   import {
-    getInspectionCandidateDetails, getMeasurementsForProtectionClass,
+    getInspectionCandidateDetails, getMeasurementsForProtectionClass, hasCurrentDguvInspection,
     getNextInspectionIndex,
     searchInspectionCandidates
   } from '$lib/inspections/dguv.helpers';
@@ -50,7 +50,7 @@
   ));
   const candidates = $derived.by(() => {
     assets.fieldsVersion;
-    return assets.all.map(asset => {
+    return assets.all.filter(asset => !hasCurrentDguvInspection(assets.getBlocks(asset.id))).map(asset => {
       const fields = assets.getFields(asset.id);
       const typeName = types.all.find(type => type.id === asset.type)?.name ?? asset.type;
       const blockText = Object.values(assets.getBlocks(asset.id))
@@ -302,7 +302,7 @@
       </section>
       <section class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <h3 class="font-semibold text-gray-900">Gerät finden</h3>
-        <p class="mt-1 text-sm text-gray-600">Standardmäßig wird nur im ausgewählten Raum gesucht.</p>
+        <p class="mt-1 text-sm text-gray-600">Die Liste zeigt den ausgewählten Raum; Geräte mit einer DGUV-Prüfung innerhalb der letzten 18 Monate werden ausgeblendet.</p>
         <label class="mt-3 block text-sm font-medium text-gray-700">
           Gerät oder Typ suchen
           <input
@@ -317,7 +317,7 @@
           Alle Räume durchsuchen
         </label>
 
-        {#if searchQuery.trim() && !selectedAsset && !creatingNew}
+        {#if (searchQuery.trim() || locationId || searchAllLocations) && !selectedAsset && !creatingNew}
           {#if matches.length}
             <ul class="mt-3 max-h-56 space-y-2 overflow-auto" aria-label="Gefundene Geräte">
               {#each matches as candidate (candidate.id)}
@@ -334,7 +334,7 @@
               {/each}
             </ul>
           {:else}
-            <p class="mt-3 text-sm text-gray-600">{!locationId && !searchAllLocations ? 'Zuerst einen Prüfungsraum auswählen.' : 'Kein Gerät gefunden.'}</p>
+            <p class="mt-3 text-sm text-gray-600">{!locationId && !searchAllLocations ? 'Zuerst einen Prüfungsraum auswählen.' : searchQuery.trim() ? 'Kein Gerät gefunden.' : 'Keine Geräte ohne aktuelle DGUV-Prüfung gefunden.'}</p>
           {/if}
           <button
             type="button"

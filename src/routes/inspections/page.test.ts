@@ -62,6 +62,7 @@ describe('DGUV-Prüfungsassistent', () => {
   it('sucht zuerst im ausgewählten Raum, erlaubt alle Räume und speichert die Prüfung', async () => {
     mocks.assets.all = [
       { id: 'asset-current', type: 'elektro', location: 'room-current' },
+      { id: 'asset-inspected', type: 'elektro', location: 'room-current' },
       { id: 'asset-existing', type: 'elektro', location: 'room-old' }
     ];
     mocks.assets.fields['asset-current'] = {
@@ -76,8 +77,18 @@ describe('DGUV-Prüfungsassistent', () => {
       foto_typenschild: 'fotos/label.jpg',
       foto_uebersicht: ''
     };
+    mocks.assets.fields['asset-inspected'] = {
+      bezeichnung: 'Kürzlich geprüftes Gerät',
+      Schutzklasse: 'I'
+    };
+    const recentInspectionDate = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
     mocks.assets.blocks['asset-existing'] = {
       pruefung: { '0': { Prüfergebnis: 'Bestanden' } }
+    };
+    mocks.assets.blocks['asset-inspected'] = {
+      pruefung: { '0': { Prüfdatum: recentInspectionDate, Prüfergebnis: 'Bestanden' } }
     };
     localStorage.setItem('zeugdb:dguv-session', JSON.stringify({
       examiner: 'Alex Prüfer',
@@ -86,6 +97,8 @@ describe('DGUV-Prüfungsassistent', () => {
 
     render(InspectionPage);
     await waitFor(() => expect((screen.getByLabelText('Prüfungsraum') as HTMLSelectElement).value).toBe('room-current'));
+    expect(screen.getByRole('button', { name: /Bohrmaschine/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Kürzlich geprüftes Gerät/ })).toBeNull();
     await fireEvent.input(screen.getByLabelText('Gerät oder Typ suchen'), {
       target: { value: 'Elektrogerät' }
     });

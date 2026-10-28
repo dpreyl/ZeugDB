@@ -25,12 +25,27 @@ export type InspectionSearchScope = {
   allLocations: boolean;
 };
 
+const CURRENT_INSPECTION_MAX_AGE_MONTHS = 18;
+
 export function getInspectionCandidateDetails(fields: Record<string, string>): string[] {
   return Object.entries(fields)
     .filter(([name, value]) =>
       IDENTIFYING_FIELD_NAMES.has(name.trim().toLocaleLowerCase('de-DE')) && value.trim() !== ''
     )
     .map(([name, value]) => `${name.trim()}: ${value.trim()}`);
+}
+
+export function hasCurrentDguvInspection(
+  blocks: AssetBlockValues,
+  now = new Date()
+): boolean {
+  if (Number.isNaN(now.getTime())) return false;
+  const today = formatLocalDate(now);
+  const cutoff = getDateMonthsBefore(now, CURRENT_INSPECTION_MAX_AGE_MONTHS);
+  return Object.values(blocks.pruefung ?? {}).some(inspection => {
+    const date = inspection['Prüfdatum'];
+    return isValidDateOnly(date) && date >= cutoff && date <= today;
+  });
 }
 
 export type InspectionMeasurement = {
@@ -68,18 +83,17 @@ export function searchInspectionCandidates(
   scope: InspectionSearchScope
 ): InspectionCandidate[] {
   const normalizedQuery = normalizeSearchText(query.trim());
-  if (!normalizedQuery) return [];
 
   return candidates
     .filter(candidate =>
       (scope.allLocations || (scope.locationId !== '' && candidate.locationId === scope.locationId)) &&
-      [
-        candidate.id,
-        candidate.designation,
-        candidate.type,
-        candidate.typeName,
-        ...candidate.searchValues
-      ].some(value => normalizeSearchText(value).includes(normalizedQuery))
+      (!normalizedQuery || [
+          candidate.id,
+          candidate.designation,
+          candidate.type,
+          candidate.typeName,
+          ...candidate.searchValues
+        ].some(value => normalizeSearchText(value).includes(normalizedQuery)))
     )
     .sort((left, right) =>
       left.designation.localeCompare(right.designation, 'de-DE', { numeric: true, sensitivity: 'base' }) ||
@@ -106,4 +120,28 @@ function normalizeSearchText(value: string): string {
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
     .toLocaleLowerCase('de-DE');
+}
+
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getDateMonthsBefore(date: Date, months: number): string {
+  const firstOfTargetMonth = new Date(Date.UTC(date.getFullYear(), date.getMonth() - months, 1));
+  const lastDay = new Date(Date.UTC(
+    firstOfTargetMonth.getUTCFullYear(),
+    firstOfTargetMonth.getUTCMonth() + 1,
+    0
+  )).getUTCDate();
+  firstOfTargetMonth.setUTCDate(Math.min(date.getDate(), lastDay));
+  return firstOfTargetMonth.toISOString().slice(0, 10);
+}
+
+function isValidDateOnly(value: string | undefined): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }

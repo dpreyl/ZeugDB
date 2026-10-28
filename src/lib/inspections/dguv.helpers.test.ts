@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  hasCurrentDguvInspection,
   getNextInspectionIndex,
   getInspectionCandidateDetails,
   getMeasurementsForProtectionClass,
@@ -67,6 +68,27 @@ describe('DGUV assistant helpers', () => {
       locationId: 'room-1',
       allLocations: false
     })).toEqual([]);
+    expect(searchInspectionCandidates(candidates, '', {
+      locationId: 'room-1',
+      allLocations: false
+    })).toEqual([candidates[0]]);
+  });
+
+  it('wertet DGUV-Prüfungen bis einschließlich 18 Monate als aktuell', () => {
+    const now = new Date(2025, 0, 15, 12);
+    expect(hasCurrentDguvInspection({
+      pruefung: {
+        '0': { Prüfdatum: '2023-07-15' },
+        '1': { Prüfdatum: '2022-01-01' }
+      }
+    }, now)).toBe(true);
+    expect(hasCurrentDguvInspection({
+      pruefung: { '0': { Prüfdatum: '2023-07-14' } }
+    }, now)).toBe(false);
+    expect(hasCurrentDguvInspection({
+      pruefung: { '0': { Prüfdatum: 'kein Datum' } }
+    }, now)).toBe(false);
+    expect(hasCurrentDguvInspection({}, now)).toBe(false);
   });
 
   it('fragt für SK I und SK II jeweils die passenden Messwerte ab', () => {
