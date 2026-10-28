@@ -331,11 +331,13 @@ sein. Der Workflow setzt den Repository-Unterpfad für den Build selbst.
 
 GitHub Pages liefert nur die App-Oberfläche aus; Assets, Typen, Standorte und
 Bilder bleiben im lokalen Gitea-Repository. In den App-Einstellungen muss als
-Git-URL die LAN-Adresse des Docker-Hosts stehen, z. B.
-`http://192.168.1.24:8929/admin/ZeugDB`. Der Browser des Handys muss mit demselben
-LAN verbunden sein. Setze in der Projekt-`.env` außerdem
-`GITEA_ROOT_URL=http://192.168.1.24:8929/`, damit von Gitea zurückgegebene
-Git-LFS-URLs ebenfalls auf den Docker-Host zeigen. Starte Gitea danach neu:
+Git-URL die LAN-Adresse oder ein im Heimnetz auflösbarer Hostname des Docker-Hosts
+stehen. Bei wechselnder Laptop-IP empfiehlt sich eine DHCP-Reservierung im Router;
+alternativ kann ein stabiler LAN-Hostname verwendet werden. Der Browser des Handys
+muss mit demselben LAN verbunden sein. Setze in der Projekt-`.env` außerdem
+`GITEA_ROOT_URL` auf dieselbe Basisadresse (z. B.
+`http://192.168.1.24:8929/`), damit von Gitea zurückgegebene Git-LFS-URLs ebenfalls
+auf den Docker-Host zeigen. Starte Gitea danach neu:
 
 ```bash
 docker compose up -d --force-recreate gitserver gitserver-proxy

@@ -66,9 +66,15 @@ describe('git.service — fetchRemote', () => {
     };
     await fetchRemote(config, 'Author', 'author@example.com');
 
-    expect(mockFetch).toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledWith({
+      url: config.url,
+      auth: { username: config.username, token: config.token }
+    });
     expect(mockCheckout).toHaveBeenCalledWith('main');
-    expect(mockPull).toHaveBeenCalledWith(expect.objectContaining({ branch: 'main' }));
+    expect(mockPull).toHaveBeenCalledWith(expect.objectContaining({
+      url: config.url,
+      branch: 'main'
+    }));
     expect(mockCheckout.mock.invocationCallOrder[0]).toBeLessThan(mockPull.mock.invocationCallOrder[0]);
   });
 

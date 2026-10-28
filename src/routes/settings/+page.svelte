@@ -171,9 +171,11 @@
       />
       <p class="mt-1 text-xs text-gray-500">
         Die App kann auf GitHub Pages liegen, die Daten bleiben in deinem Gitea-Repository.
-        Trage hier bei GitHub Pages die LAN-Adresse des Gitea-Servers ein, z. B.
-        http://192.168.1.24:8929/admin/ZeugDB. Chrome fragt beim ersten Zugriff ggf. nach
-        der Berechtigung für das lokale Netzwerk.
+        Trage bei GitHub Pages die LAN-Adresse oder einen im Heimnetz auflösbaren Hostnamen
+        des Gitea-Servers ein. Bei wechselnder Laptop-IP empfiehlt sich eine DHCP-Reservierung
+        im Router. Verwende denselben Hostnamen auch in Giteas `GITEA_ROOT_URL`, damit Git-LFS
+        dieselbe Adresse zurückgibt. Chrome fragt beim ersten Zugriff ggf. nach der Berechtigung
+        für das lokale Netzwerk.
       </p>
     </div>
 

@@ -430,6 +430,7 @@ export async function fetchRemote(
 
   // 1. Fetch — aktualisiert Remote-refs ohne lokale Änderungen
   await repo.fetchFromRemote({
+    url: config.url,
     auth: { username: config.username, token: config.token }
   });
 
@@ -450,6 +451,7 @@ export async function fetchRemote(
     // Read-only gehört immer zu main, auch nach einem Reload mit altem HEAD.
     await repo.checkoutBranch('main');
     await repo.pull({
+      url: config.url,
       auth: { username: config.username, token: config.token },
       branch: 'main',
       author: { name: authorName, email: authorEmail },
