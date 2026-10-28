@@ -1,12 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
   getNextInspectionIndex,
+  getInspectionCandidateDetails,
   getMeasurementsForProtectionClass,
   searchInspectionCandidates,
   type InspectionCandidate
 } from './dguv.helpers';
 
 describe('DGUV assistant helpers', () => {
+  it('zeigt identifizierende Gerätefelder und ignoriert leere oder andere Felder', () => {
+    expect(getInspectionCandidateDetails({
+      Hersteller: ' Bosch ',
+      modell: 'GBH 18V',
+      Seriennummer: ' ',
+      Bezeichnung: 'Bohrmaschine',
+      Notizen: 'Werkstatt'
+    })).toEqual(['Hersteller: Bosch', 'modell: GBH 18V']);
+    expect(getInspectionCandidateDetails({})).toEqual([]);
+  });
+
   it('sucht standardmäßig nur im ausgewählten Raum und optional raumübergreifend', () => {
     const candidates: InspectionCandidate[] = [
       {
@@ -14,6 +26,7 @@ describe('DGUV assistant helpers', () => {
         designation: 'Kaffeemaschine',
         type: 'kaffeemaschine',
         typeName: 'Kaffeemaschine',
+        identifyingDetails: [],
         locationId: 'room-1',
         location: 'Raum 1',
         searchValues: ['Inventar 42']
@@ -23,6 +36,7 @@ describe('DGUV assistant helpers', () => {
         designation: 'Beamer',
         type: 'projektor',
         typeName: 'Projektor',
+        identifyingDetails: [],
         locationId: 'room-2',
         location: 'Raum 2',
         searchValues: []

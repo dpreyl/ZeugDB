@@ -66,6 +66,8 @@ describe('DGUV-Prüfungsassistent', () => {
     ];
     mocks.assets.fields['asset-current'] = {
       bezeichnung: 'Bohrmaschine',
+      Hersteller: 'Bosch',
+      Modell: 'GBH 18V',
       Schutzklasse: 'I'
     };
     mocks.assets.fields['asset-existing'] = {
@@ -87,7 +89,10 @@ describe('DGUV-Prüfungsassistent', () => {
     await fireEvent.input(screen.getByLabelText('Gerät oder Typ suchen'), {
       target: { value: 'Elektrogerät' }
     });
-    expect(screen.getByRole('button', { name: /Bohrmaschine/ })).toBeTruthy();
+    const currentAssetResult = screen.getByRole('button', { name: /Bohrmaschine/ });
+    expect(currentAssetResult.textContent).toContain('Bosch');
+    expect(currentAssetResult.textContent).toContain('GBH 18V');
+    expect(currentAssetResult.textContent).not.toContain('asset-current');
     expect(screen.queryByRole('button', { name: /Akkuschrauber/ })).toBeNull();
     await fireEvent.click(screen.getByLabelText('Alle Räume durchsuchen'));
     expect(screen.getByRole('button', { name: /Akkuschrauber/ })).toBeTruthy();

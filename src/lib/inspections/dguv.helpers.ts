@@ -5,15 +5,33 @@ export type InspectionCandidate = {
   designation: string;
   type: string;
   typeName: string;
+  identifyingDetails: string[];
   locationId: string | null;
   location: string;
   searchValues: string[];
 };
 
+const IDENTIFYING_FIELD_NAMES = new Set([
+  'hersteller',
+  'fabrikat',
+  'marke',
+  'modell',
+  'seriennummer',
+  'inventarnummer'
+]);
+
 export type InspectionSearchScope = {
   locationId: string;
   allLocations: boolean;
 };
+
+export function getInspectionCandidateDetails(fields: Record<string, string>): string[] {
+  return Object.entries(fields)
+    .filter(([name, value]) =>
+      IDENTIFYING_FIELD_NAMES.has(name.trim().toLocaleLowerCase('de-DE')) && value.trim() !== ''
+    )
+    .map(([name, value]) => `${name.trim()}: ${value.trim()}`);
+}
 
 export type InspectionMeasurement = {
   name: string;

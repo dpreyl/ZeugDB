@@ -14,7 +14,7 @@
   import { photoRoleField, type PhotoRole } from '$lib/components/asset-photo.helpers';
   import type { AssetBlockValues } from '$lib/components/asset-blocks.helpers';
   import {
-    getMeasurementsForProtectionClass,
+    getInspectionCandidateDetails, getMeasurementsForProtectionClass,
     getNextInspectionIndex,
     searchInspectionCandidates
   } from '$lib/inspections/dguv.helpers';
@@ -59,6 +59,7 @@
         id: asset.id,
         type: asset.type, locationId: asset.location,
         typeName,
+        identifyingDetails: getInspectionCandidateDetails(fields),
         designation: fields.bezeichnung?.trim() || 'Ohne Bezeichnung',
         location: asset.location ? locations.findById(asset.location)?.name ?? asset.location : 'Kein Standort',
         searchValues: [...Object.values(fields), ...blockText]
@@ -92,7 +93,6 @@
       : '';
     inspectionDate = getLocalDate();
   });
-
   function saveSession() {
     saveInspectionSession({ examiner, locationId });
   }
@@ -328,7 +328,7 @@
                     class="w-full rounded-md border border-gray-200 px-3 py-2 text-left hover:border-blue-400 hover:bg-blue-50"
                   >
                     <span class="block font-medium text-gray-900">{candidate.designation}</span>
-                    <span class="block text-xs text-gray-600">{candidate.typeName} · {candidate.location} · {candidate.id}</span>
+                    <span class="block text-xs text-gray-600">{candidate.typeName} · {candidate.location}{candidate.identifyingDetails.length ? ` · ${candidate.identifyingDetails.join(' · ')}` : ''}</span>
                   </button>
                 </li>
               {/each}
