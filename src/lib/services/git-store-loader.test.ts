@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadGitFsToStores } from './git-store-loader';
 import { getAssetStore, resetAssetStore } from '../stores/assets.store.svelte';
 import { getComponentsStore, resetComponentsStore } from '../stores/components.store.svelte';
 import { getLocationsStore, resetLocationsStore } from '../stores/locations.store.svelte';
 import { getTypesStore, resetTypesStore } from '../stores/types.store.svelte';
+import * as fotoStoreModule from '../stores/fotos.store.svelte';
 
 describe('loadGitFsToStores', () => {
   afterEach(() => {
@@ -12,6 +13,7 @@ describe('loadGitFsToStores', () => {
     resetLocationsStore();
     resetTypesStore();
     localStorage.clear();
+    vi.restoreAllMocks();
   });
 
   it('lädt Asset-Blöcke und wiederverwendbare Komponentendefinitionen', async () => {
@@ -47,5 +49,19 @@ describe('loadGitFsToStores', () => {
     expect(getTypesStore().findById('projector')?.blocks).toEqual([
       { compId: 'port', min: 0, max: 8 }
     ]);
+  });
+
+  it('versucht nach dem Laden der Git-Daten optionale Previews zu synchronisieren', async () => {
+    const syncPreviews = vi.fn().mockResolvedValue({ downloaded: 1, skipped: false });
+    vi.spyOn(fotoStoreModule, 'getFotoStore').mockReturnValue({
+      syncPreviews
+    } as unknown as ReturnType<typeof fotoStoreModule.getFotoStore>);
+
+    await loadGitFsToStores({
+      readdir: async () => [],
+      readFile: async () => ''
+    } as never);
+
+    expect(syncPreviews).toHaveBeenCalledOnce();
   });
 });

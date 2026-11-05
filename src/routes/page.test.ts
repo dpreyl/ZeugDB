@@ -34,6 +34,24 @@ describe('Assets-Seite', () => {
     expect(screen.getByText('Konferenzprojektor').textContent).not.toContain(id);
   });
 
+  it('zeigt das Datum der letzten DGUV-Prüfung in der Übersicht', async () => {
+    getAssetStore().createAsset({
+      id: 'asset-tested',
+      type: 'projektor',
+      fields: { bezeichnung: 'Projektor geprüft' },
+      blocks: {
+        pruefung: {
+          '0': { Prüfdatum: '2022-03-12' },
+          '1': { Prüfdatum: '2024-11-05' }
+        }
+      }
+    });
+    render(Page, { props: { data: { assets: [] } } as never });
+
+    expect(screen.getByRole('columnheader', { name: /Letzte DGUV-Prüfung/ })).toBeTruthy();
+    expect(screen.getAllByText('2024-11-05').length).toBeGreaterThan(0);
+  });
+
   it('filtert die Asset-Liste nach den ausgewählten Werten einer Spalte', async () => {
     const store = getAssetStore();
     store.createAsset({ type: 'projektor', fields: { bezeichnung: 'Projektor Saal 1' } });

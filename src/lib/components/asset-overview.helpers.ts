@@ -1,5 +1,6 @@
 import type { Location } from '../parser/types';
 import { flattenLocationTree } from '../locations/location-tree';
+import type { AssetBlockValues } from './asset-blocks.helpers';
 import { sortByLabel } from './sort-options';
 
 export type AssetOverviewField = 'bezeichnung' | 'typ' | 'standort' | 'geaendert';
@@ -12,6 +13,7 @@ export type AssetOverviewRow = {
   standortName?: string;
   suchtext?: string;
   geaendert: string;
+  letzteDguvPruefung: string;
 };
 
 export type LocationFilterOption = {
@@ -22,6 +24,14 @@ export type LocationFilterOption = {
 };
 
 export type AssetOverviewFilters = Partial<Record<AssetOverviewField, string[] | null>>;
+
+export function getLatestDguvInspectionDate(blocks: AssetBlockValues): string | null {
+  const dates = Object.values(blocks.pruefung ?? {})
+    .map(inspection => inspection['Prüfdatum'])
+    .filter(isValidDateOnly)
+    .sort((left, right) => right.localeCompare(left));
+  return dates[0] ?? null;
+}
 
 export function getAssetFilterOptions(
   rows: AssetOverviewRow[],
@@ -118,4 +128,10 @@ export function filterAssetRows(
       selected === undefined || selected === null || selected.includes(row[field])
     )
   );
+}
+
+function isValidDateOnly(value: string | undefined): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }

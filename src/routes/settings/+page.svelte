@@ -5,6 +5,7 @@
     saveGitConfig,
     cloneRepo,
     initRepo,
+    getGitRepo,
     getSyncStatus,
     pushToRemote,
     syncPushWithLfs,
@@ -13,6 +14,9 @@
     type GitConfig
   } from '$lib/services/git.service';
   import { getDefaultGitConfigUrl } from '$lib/services/git-defaults';
+  import { getFotoStore } from '$lib/stores/fotos.store.svelte';
+  import { initFotoService } from '$lib/services/foto-init';
+  import { loadGitFsToStores } from '$lib/services/git-store-loader';
 
   const savedConfig = loadGitConfig();
   let gitUrl = $state(savedConfig?.url ?? getDefaultGitConfigUrl());
@@ -46,6 +50,11 @@
       token
     };
     saveGitConfig(config);
+    void getFotoStore().initLfs({
+      repoUrl: config.url,
+      username: config.username,
+      token: config.token
+    });
     saved = true;
     setTimeout(() => saved = false, 2000);
   }
@@ -133,6 +142,27 @@
       progress = null;
     }
   }
+
+  async function handleMigrateImages() {
+    if (!window.confirm('Vorhandene Fotos in JPEG-Originale und Offline-Vorschauen umwandeln? Danach müssen die Änderungen committen und gepusht werden.')) {
+      return;
+    }
+    loading = true;
+    error = null;
+    progress = 'Prüfe und migriere Gerätebilder...';
+    try {
+      await initFotoService();
+      const result = await getFotoStore().migrateExistingImages();
+      await loadGitFsToStores(await getGitRepo());
+      lastResult = `Bildmigration abgeschlossen: ${result.migrated} migriert, ${result.skipped} bereits aktuell`;
+      status = await getSyncStatus();
+    } catch (e: unknown) {
+      error = e instanceof Error ? e.message : 'Bildmigration fehlgeschlagen';
+    } finally {
+      loading = false;
+      progress = null;
+    }
+  }
 </script>
 
 <div class="max-w-lg space-y-6">
@@ -214,6 +244,10 @@
 
   <div class="pt-4 border-t border-gray-200">
     <h3 class="text-sm font-medium text-gray-700 mb-2">Repo-Verwaltung</h3>
+    <p class="mb-3 text-xs text-gray-500">
+      Die einmalige Bildmigration komprimiert vorhandene Fotos und erstellt Offline-Vorschauen.
+      Danach die Änderungen committen und zum Server pushen.
+    </p>
 
     <div class="flex gap-2 flex-wrap">
       <button
@@ -229,6 +263,13 @@
         class="px-4 py-2 bg-gray-600 text-white text-sm rounded-md hover:bg-gray-700 disabled:opacity-50"
       >
         Neues Repo erstellen
+      </button>
+      <button
+        onclick={handleMigrateImages}
+        disabled={loading || !status?.initialized}
+        class="px-4 py-2 bg-amber-600 text-white text-sm rounded-md hover:bg-amber-700 disabled:opacity-50"
+      >
+        Bilder migrieren
       </button>
     </div>
   </div>

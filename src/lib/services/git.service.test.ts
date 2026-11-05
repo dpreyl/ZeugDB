@@ -129,6 +129,10 @@ describe('git.service — Clone', () => {
     };
     const mockClone = vi.fn().mockResolvedValue(undefined);
     mockGitRepo({ clone: mockClone });
+    const fotoStore = { init: vi.fn(), initLfs: vi.fn() };
+    vi.spyOn(fotoStoreModule, 'getFotoStore').mockReturnValue(
+      fotoStore as unknown as ReturnType<typeof fotoStoreModule.getFotoStore>
+    );
     const loader = await import('./git-store-loader');
     const loadStores = vi.spyOn(loader, 'loadGitFsToStores').mockResolvedValue();
 
@@ -141,6 +145,12 @@ describe('git.service — Clone', () => {
     });
     expect(loadStores).toHaveBeenCalledOnce();
     expect(loadStores).toHaveBeenCalledWith(expect.anything());
+    expect(fotoStore.init).toHaveBeenCalledWith(expect.anything());
+    expect(fotoStore.initLfs).toHaveBeenCalledWith({
+      repoUrl: config.url,
+      username: config.username,
+      token: config.token
+    });
     expect(loadGitConfig()).toEqual(config);
   });
 });
@@ -535,7 +545,8 @@ describe('git.service — syncEditBranch', () => {
     };
     const flushPendingLfs = vi.fn().mockResolvedValue(undefined);
     vi.spyOn(fotoStoreModule, 'getFotoStore').mockReturnValue({
-      flushPendingLfs
+      flushPendingLfs,
+      syncPreviews: vi.fn().mockResolvedValue({ downloaded: 0, skipped: true })
     } as unknown as ReturnType<typeof fotoStoreModule.getFotoStore>);
     vi.spyOn(editModeModule, 'getEditMode').mockReturnValue(
       editMode as unknown as import('$lib/stores/edit-mode.svelte').EditMode

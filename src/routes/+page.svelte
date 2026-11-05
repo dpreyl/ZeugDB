@@ -6,6 +6,7 @@
   import {
     filterAssetRows,
     getAssetFilterOptions,
+    getLatestDguvInspectionDate,
     getLocationDisplayName,
     getLocationFilterOptions,
     searchAssetRows,
@@ -33,21 +34,25 @@
 
   const assets = $derived.by(() => {
     assetStore.fieldsVersion;
-    return assetStore.all.map(asset => ({
-      id: asset.id,
-      bezeichnung: assetStore.getField(asset.id, 'bezeichnung')?.trim() || 'Ohne Bezeichnung',
-      typ: asset.type,
-      standort: asset.location || '—',
-      standortName: getLocationDisplayName(asset.location || '—', locationsStore.all),
-      suchtext: [
-        asset.id,
-        typesStore.all.find(type => type.id === asset.type)?.name ?? '',
-        ...Object.values(assetStore.getFields(asset.id)),
-        ...Object.values(assetStore.getBlocks(asset.id))
-          .flatMap(instances => Object.values(instances).flatMap(fields => Object.values(fields)))
-      ].join(' '),
-      geaendert: asset.geaendert?.slice(0, 10) || '—'
-    }));
+    return assetStore.all.map(asset => {
+      const blocks = assetStore.getBlocks(asset.id);
+      return {
+        id: asset.id,
+        bezeichnung: assetStore.getField(asset.id, 'bezeichnung')?.trim() || 'Ohne Bezeichnung',
+        typ: asset.type,
+        standort: asset.location || '—',
+        standortName: getLocationDisplayName(asset.location || '—', locationsStore.all),
+        suchtext: [
+          asset.id,
+          typesStore.all.find(type => type.id === asset.type)?.name ?? '',
+          ...Object.values(assetStore.getFields(asset.id)),
+          ...Object.values(blocks)
+            .flatMap(instances => Object.values(instances).flatMap(fields => Object.values(fields)))
+        ].join(' '),
+        geaendert: asset.geaendert?.slice(0, 10) || '—',
+        letzteDguvPruefung: getLatestDguvInspectionDate(blocks) ?? '—'
+      };
+    });
   });
   const visibleAssets = $derived(filterAssetRows(searchAssetRows(assets, searchQuery), filters));
 
@@ -91,68 +96,104 @@
     />
   </label>
 
+  <div class="flex flex-wrap items-center gap-3" aria-label="Assets filtern">
+    <span class="text-xs font-medium text-gray-500">Filtern:</span>
+    <div class="flex items-center gap-1 text-sm text-gray-600">
+      <span>Bezeichnung</span>
+      <ColumnFilter
+        label="Bezeichnung"
+        options={getAssetFilterOptions(assets, 'bezeichnung')}
+        selected={filters.bezeichnung ?? null}
+        onChange={(selected) => setFilter('bezeichnung', selected)}
+      />
+    </div>
+    <div class="flex items-center gap-1 text-sm text-gray-600">
+      <span>Typ</span>
+      <ColumnFilter
+        label="Typ"
+        options={getAssetFilterOptions(assets, 'typ')}
+        selected={filters.typ ?? null}
+        onChange={(selected) => setFilter('typ', selected)}
+      />
+    </div>
+    <div class="flex items-center gap-1 text-sm text-gray-600">
+      <span>Standort</span>
+      <LocationFilter
+        options={getLocationFilterOptions(locationsStore.all, assets)}
+        selected={filters.standort ?? null}
+        onChange={(selected) => setFilter('standort', selected)}
+      />
+    </div>
+    <div class="flex items-center gap-1 text-sm text-gray-600">
+      <span>Geändert</span>
+      <ColumnFilter
+        label="Geändert"
+        options={getAssetFilterOptions(assets, 'geaendert')}
+        selected={filters.geaendert ?? null}
+        onChange={(selected) => setFilter('geaendert', selected)}
+      />
+    </div>
+  </div>
+
   <div class="bg-white rounded-lg shadow border border-gray-200">
-    <table class="w-full text-sm">
-      <thead class="bg-gray-50 border-b border-gray-200">
+    <table class="block w-full text-sm sm:table">
+      <thead class="hidden bg-gray-50 border-b border-gray-200 sm:table-header-group">
         <tr>
           <th class="px-4 py-2 text-left font-medium text-gray-600">
             Bezeichnung
-            <ColumnFilter
-              label="Bezeichnung"
-              options={getAssetFilterOptions(assets, 'bezeichnung')}
-              selected={filters.bezeichnung ?? null}
-              onChange={(selected) => setFilter('bezeichnung', selected)}
-            />
           </th>
           <th class="px-4 py-2 text-left font-medium text-gray-600">
             Typ
-            <ColumnFilter
-              label="Typ"
-              options={getAssetFilterOptions(assets, 'typ')}
-              selected={filters.typ ?? null}
-              onChange={(selected) => setFilter('typ', selected)}
-            />
           </th>
           <th class="px-4 py-2 text-left font-medium text-gray-600">
             Standort
-            <LocationFilter
-              options={getLocationFilterOptions(locationsStore.all, assets)}
-              selected={filters.standort ?? null}
-              onChange={(selected) => setFilter('standort', selected)}
-            />
+          </th>
+          <th class="px-4 py-2 text-left font-medium text-gray-600">
+            Letzte DGUV-Prüfung
           </th>
           <th class="px-4 py-2 text-left font-medium text-gray-600">
             Geändert
-            <ColumnFilter
-              label="Geändert"
-              options={getAssetFilterOptions(assets, 'geaendert')}
-              selected={filters.geaendert ?? null}
-              onChange={(selected) => setFilter('geaendert', selected)}
-            />
           </th>
           <th class="px-4 py-2 text-right font-medium text-gray-600">Aktion</th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-gray-100">
+      <tbody class="block divide-y divide-gray-100 sm:table-row-group">
         {#if visibleAssets.length === 0}
-          <tr>
-            <td colspan="5" class="px-4 py-6 text-center text-sm text-gray-500">
+          <tr class="block sm:table-row">
+            <td colspan="6" class="block px-4 py-6 text-center text-sm text-gray-500 sm:table-cell">
               {assets.length === 0 ? 'Noch keine Assets vorhanden.' : 'Keine Assets entsprechen den Filtern.'}
             </td>
           </tr>
         {:else}
           {#each visibleAssets as asset (asset.id)}
-            <tr class="hover:bg-gray-50">
-              <td class="px-4 py-2 font-medium text-gray-900">
-                <a href="{base}/assets/{asset.id}" class="text-blue-700 hover:underline">{asset.bezeichnung}</a>
-                {#if asset.bezeichnung === 'Ohne Bezeichnung'}
-                  <span class="block font-mono text-xs font-normal text-gray-400">{asset.id}</span>
-                {/if}
+            <tr class="mb-3 block rounded-lg border border-gray-200 bg-white p-2 shadow-sm hover:bg-gray-50 sm:mb-0 sm:table-row sm:rounded-none sm:border-0 sm:p-0 sm:shadow-none">
+              <td class="flex items-start justify-between gap-3 px-2 py-2 sm:table-cell sm:px-4">
+                <span class="shrink-0 text-xs text-gray-500 sm:hidden">Bezeichnung</span>
+                <div class="min-w-0 break-words font-medium text-gray-900">
+                  <a href="{base}/assets/{asset.id}" class="text-blue-700 hover:underline">{asset.bezeichnung}</a>
+                  {#if asset.bezeichnung === 'Ohne Bezeichnung'}
+                    <span class="block font-mono text-xs font-normal text-gray-400">{asset.id}</span>
+                  {/if}
+                </div>
               </td>
-              <td class="px-4 py-2 capitalize">{asset.typ}</td>
-              <td class="px-4 py-2 text-gray-600">{asset.standortName}</td>
-              <td class="px-4 py-2 text-gray-500">{asset.geaendert}</td>
-              <td class="px-4 py-2 text-right">
+              <td class="flex items-start justify-between gap-3 px-2 py-2 capitalize sm:table-cell sm:px-4">
+                <span class="shrink-0 text-xs text-gray-500 sm:hidden">Typ</span>
+                <span class="min-w-0 break-words text-right sm:text-left">{asset.typ}</span>
+              </td>
+              <td class="flex items-start justify-between gap-3 px-2 py-2 text-gray-600 sm:table-cell sm:px-4">
+                <span class="shrink-0 text-xs text-gray-500 sm:hidden">Standort</span>
+                <span class="min-w-0 break-words text-right sm:text-left">{asset.standortName}</span>
+              </td>
+              <td class="flex items-start justify-between gap-3 px-2 py-2 text-gray-600 sm:table-cell sm:px-4">
+                <span class="shrink-0 text-xs text-gray-500 sm:hidden">Letzte DGUV-Prüfung</span>
+                <span class="min-w-0 break-words text-right sm:text-left">{asset.letzteDguvPruefung}</span>
+              </td>
+              <td class="flex items-start justify-between gap-3 px-2 py-2 text-gray-500 sm:table-cell sm:px-4">
+                <span class="shrink-0 text-xs text-gray-500 sm:hidden">Geändert</span>
+                <span class="min-w-0 break-words text-right sm:text-left">{asset.geaendert}</span>
+              </td>
+              <td class="flex items-start justify-between gap-3 px-2 py-2 text-right sm:table-cell sm:px-4">
+                <span class="shrink-0 text-xs text-gray-500 sm:hidden">Aktion</span>
                 <a href="{base}/assets/{asset.id}" class="text-blue-600 hover:underline">Öffnen</a>
               </td>
             </tr>

@@ -5,16 +5,29 @@ import {
   getAssetFilterOptions,
   getLocationDisplayName,
   getLocationFilterOptions,
+  getLatestDguvInspectionDate,
   searchAssetRows
 } from './asset-overview.helpers';
 
 const rows = [
-  { id: '1', bezeichnung: 'Projektor Saal 1', typ: 'projektor', standort: 'Saal 1', geaendert: '2026-10-20' },
-  { id: '2', bezeichnung: 'Projektor Saal 2', typ: 'projektor', standort: 'Saal 2', geaendert: '2026-10-20' },
-  { id: '3', bezeichnung: 'HDMI lang', typ: 'hdmi-kabel', standort: 'Saal 1', geaendert: '—' }
+  { id: '1', bezeichnung: 'Projektor Saal 1', typ: 'projektor', standort: 'Saal 1', geaendert: '2026-10-20', letzteDguvPruefung: '—' },
+  { id: '2', bezeichnung: 'Projektor Saal 2', typ: 'projektor', standort: 'Saal 2', geaendert: '2026-10-20', letzteDguvPruefung: '—' },
+  { id: '3', bezeichnung: 'HDMI lang', typ: 'hdmi-kabel', standort: 'Saal 1', geaendert: '—', letzteDguvPruefung: '—' }
 ];
 
 describe('asset overview helpers', () => {
+  it('returns the most recent valid DGUV inspection date', () => {
+    expect(getLatestDguvInspectionDate({
+      pruefung: {
+        '0': { Prüfdatum: '2022-03-12' },
+        '1': { Prüfdatum: '2024-11-05' },
+        '2': { Prüfdatum: 'invalid' }
+      }
+    })).toBe('2024-11-05');
+    expect(getLatestDguvInspectionDate({})).toBeNull();
+    expect(getLatestDguvInspectionDate({ pruefung: { '0': { Prüfergebnis: 'Bestanden' } } })).toBeNull();
+  });
+
   it('creates unique sorted filter values for each column', () => {
     expect(getAssetFilterOptions(rows, 'typ')).toEqual(['hdmi-kabel', 'projektor']);
     expect(getAssetFilterOptions(rows, 'standort')).toEqual(['Saal 1', 'Saal 2']);

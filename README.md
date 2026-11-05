@@ -76,6 +76,10 @@ passende Messwerte sowie Prüfergebnis ab und bietet optionale Übersichts- und
 Typenschildbilder an. Neue Geräte erhalten automatisch eine Erstprüfung,
 vorhandene eine Wiederholungsprüfung.
 
+Die Asset-Übersicht zeigt zusätzlich das Datum der letzten DGUV-Prüfung. Auf
+kleinen Bildschirmen werden Assets als kompakte Karten statt als abgeschnittene
+Tabellenspalten dargestellt.
+
 ## Typen verwalten
 
 Asset-Typen werden auf der Seite **Typen** über ein Formular erstellt und
@@ -167,11 +171,21 @@ und über **Sync** ins Repository übertragen werden.
 
 Fotos lassen sich auf Mobilgeräten über **Foto aufnehmen oder auswählen**
 direkt mit der Kamera erfassen. Dabei ist kein manuelles Speichern oder
-Auswählen einer zuvor abgelegten Datei erforderlich. Bis zur Synchronisierung
-bleibt das Bild lokal im Browser (IndexedDB) zwischengespeichert; **Sync**
-überträgt es anschließend als Git-LFS-Objekt. Für eigene Gitea-Server muss der
-Reverse Proxy zusätzlich Cross-Origin-`PUT`-Anfragen und die Header
-`Authorization`, `Content-Type` und `Transfer-Encoding` erlauben.
+Auswählen einer zuvor abgelegten Datei erforderlich. Die App wandelt jedes
+Bild beim Speichern in ein JPEG-Original mit höchstens 3 MiB und eine
+Offline-Vorschau mit höchstens 300 KiB um. Beide Varianten bleiben bis zur
+Synchronisierung in IndexedDB vorgemerkt; **Sync** überträgt sie anschließend
+als Git-LFS-Objekte. Beim Abruf werden Originale nur online geladen. Offline
+stehen lokal gespeicherte Vorschauen zur Verfügung. Nach einem Pull lädt die
+App fehlende Vorschauen nur, wenn die Browser-Speicherquote dafür genügt und
+ein zusätzlicher Sicherheitsabstand von mindestens 20 MiB frei bleibt.
+
+Vorhandene Fotos lassen sich einmalig über **Einstellungen → Bilder migrieren**
+in das neue Format umwandeln. Danach die Änderungen committen und pushen. Die
+Migration benötigt für vorhandene, noch nicht lokal gespeicherte LFS-Bilder
+eine Verbindung zum Git-Server. Für eigene Gitea-Server muss der Reverse Proxy
+zusätzlich Cross-Origin-`PUT`-Anfragen und die Header `Authorization`,
+`Content-Type` und `Transfer-Encoding` erlauben.
 
 Die benötigte Repo-Struktur und Dateiformate sind in
 [`gitea/repo-template/REPO_SETUP.md`](gitea/repo-template/REPO_SETUP.md)
@@ -278,11 +292,12 @@ HTTP-Ursprungs werden durch den Wechsel nicht gelöscht oder automatisch
 
 Danach können Assets, Typen und Standorte auch ohne WLAN lokal angelegt,
 bearbeitet und gespeichert werden. Fotos bleiben bis zum nächsten Online-Sync
-in IndexedDB vorgemerkt; **Sync**, **Holen**, Git/LFS-Upload und erstmaliges
-Herunterladen eines LFS-Fotos benötigen weiterhin eine Verbindung zum
-Git-Server. Bereits geladene Fotos und Kartenausschnitte bleiben lokal
-verfügbar. Zum Installieren der PWA muss die HTTPS-Adresse ohne Zertifikats-
-warnung geöffnet sein.
+in IndexedDB vorgemerkt. **Sync**, **Holen**, Git/LFS-Upload und das erstmalige
+Herunterladen einer LFS-Vorschau oder eines Originals benötigen weiterhin
+eine Verbindung zum Git-Server. Bereits heruntergeladene Vorschauen und
+Kartenausschnitte bleiben lokal verfügbar; die großen Originale werden online
+vom LFS-Server geladen. Zum Installieren der PWA muss die HTTPS-Adresse ohne
+Zertifikatswarnung geöffnet sein.
 
 Der Offline-Test muss gegen die Produktionsausgabe laufen. `docker compose up`
 startet den Vite-Entwicklungsserver auf Port 3000; dort ist der Service Worker
@@ -359,7 +374,9 @@ kein manuell installiertes Zertifikat.
 
 Die App speichert Änderungen weiterhin lokal im Browser, wenn sie offline ist.
 Gitea-Sync und noch nicht heruntergeladene LFS-Bilder benötigen eine Verbindung
-zum lokalen Netzwerk. GitHub Pages ist kein Ersatz für den Git-Datenspeicher.
+zum lokalen Netzwerk. Offline bleiben nur bereits geladene Vorschaubilder
+verfügbar; große Originale werden bei bestehender Verbindung direkt vom
+LFS-Server geladen. GitHub Pages ist kein Ersatz für den Git-Datenspeicher.
 
 Für einen eigenen HTTP-Server genügt der normale Build:
 

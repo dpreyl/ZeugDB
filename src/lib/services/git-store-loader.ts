@@ -10,6 +10,7 @@ import { getTypesStore } from '../stores/types.store.svelte';
 import type { GitRepo } from '../git/repo';
 import { loadComponentsFromGit } from './component-git-sync';
 import { persistStore } from './init';
+import { getFotoStore } from '../stores/fotos.store.svelte';
 
 /**
  * Reads repository files into the application stores after a pull.
@@ -75,4 +76,7 @@ export async function loadGitFsToStores(repo: GitRepo): Promise<void> {
   }
 
   persistStore();
+  // Vorschaubilder sind optional: ein fehlender Speicherplatz oder LFS-Fehler
+  // darf das Laden der eigentlichen Gerätedaten nicht verhindern.
+  await getFotoStore().syncPreviews().catch(() => undefined);
 }

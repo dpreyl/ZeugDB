@@ -17,6 +17,7 @@ export class FotoStore {
    */
   async init(fs: RepoFs): Promise<void> {
     this.service = new FotoService(fs);
+    if (this.lfs) this.service.setLfsClient(this.lfs);
     this.fehle = false;
   }
 
@@ -26,7 +27,7 @@ export class FotoStore {
    * LFS-Server hochgeladen.
    */
   async initLfs(config: LfsConfig): Promise<void> {
-    this.lfs = new LfsClient();
+    this.lfs ??= new LfsClient();
     this.lfs.configure(config);
     this.service?.setLfsClient(this.lfs);
   }
@@ -53,6 +54,16 @@ export class FotoStore {
   async listFotos(assetId: string): Promise<string[]> {
     if (!this.service) throw new Error('FotoStore nicht initialisiert');
     return this.service.listFotos(assetId);
+  }
+
+  async syncPreviews(): Promise<{ downloaded: number; skipped: boolean }> {
+    if (!this.service) return { downloaded: 0, skipped: true };
+    return this.service.syncPreviews();
+  }
+
+  async migrateExistingImages(): Promise<{ migrated: number; skipped: number }> {
+    if (!this.service) throw new Error('FotoStore nicht initialisiert');
+    return this.service.migrateExistingImages();
   }
 
   /**

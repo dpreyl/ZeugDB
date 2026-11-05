@@ -47,21 +47,17 @@ async function createTestRepository() {
   });
 }
 
-async function verifyLfsRoundTrip(assetId, sourceImage) {
+async function fetchLfsImage(path) {
   const pointerResponse = await giteaRequest(
-    `/api/v1/repos/${username}/${repoName}/contents/fotos/${assetId}/photo-0.png?ref=main`
+    `/api/v1/repos/${username}/${repoName}/contents/${path}?ref=main`
   );
   const file = await pointerResponse.json();
-  const pointer = Buffer.from(file.content, 'base64').toString('utf8');
-  const oid = pointer.match(/^oid sha256:([a-f0-9]{64})$/m)?.[1];
-  const size = Number(pointer.match(/^size (\d+)$/m)?.[1]);
-  if (!pointer.startsWith('version https://git-lfs.github.com/spec/v1') || !oid) {
-    throw new Error(`Git main does not contain an LFS pointer: ${pointer}`);
+  const pointerText = Buffer.from(file.content, 'base64').toString('utf8');
+  const oid = pointerText.match(/^oid sha256:([a-f0-9]{64})$/m)?.[1];
+  const size = Number(pointerText.match(/^size (\d+)$/m)?.[1]);
+  if (!pointerText.startsWith('version https://git-lfs.github.com/spec/v1') || !oid) {
+    throw new Error(`Git main does not contain an LFS pointer for ${path}: ${pointerText}`);
   }
-  if (size !== sourceImage.length) {
-    throw new Error(`LFS pointer size ${size} does not match uploaded image size ${sourceImage.length}`);
-  }
-
   const batchResponse = await giteaRequest(`/${username}/${repoName}/info/lfs/objects/batch`, {
     method: 'POST',
     headers: {
@@ -84,12 +80,27 @@ async function verifyLfsRoundTrip(assetId, sourceImage) {
   });
   if (!download.ok) throw new Error(`LFS object download returned HTTP ${download.status}`);
 
-  const roundTripImage = Buffer.from(await download.arrayBuffer());
-  const roundTripOid = createHash('sha256').update(roundTripImage).digest('hex');
-  if (!roundTripImage.equals(sourceImage) || roundTripOid !== oid) {
-    throw new Error(`LFS round-trip mismatch: downloaded SHA-256 ${roundTripOid}, pointer OID ${oid}`);
+  const image = Buffer.from(await download.arrayBuffer());
+  const roundTripOid = createHash('sha256').update(image).digest('hex');
+  if (image.length !== size || roundTripOid !== oid) {
+    throw new Error(`LFS round-trip mismatch for ${path}: downloaded SHA-256 ${roundTripOid}, pointer OID ${oid}`);
   }
-  console.log(`GIT_LFS_ROUNDTRIP_OK repo=${repoName} oid=${oid} bytes=${size}`);
+  return image;
+}
+
+async function verifyLfsRoundTrip(assetId) {
+  const fullImage = await fetchLfsImage(`fotos/${assetId}/photo-0.jpg`);
+  const preview = await fetchLfsImage(`fotos/${assetId}/photo-0.preview.jpg`);
+  if (fullImage.length > 3 * 1024 * 1024) {
+    throw new Error(`Compressed full image exceeds 3 MiB: ${fullImage.length}`);
+  }
+  if (preview.length > 300 * 1024) {
+    throw new Error(`Preview exceeds 300 KiB: ${preview.length}`);
+  }
+  if (fullImage[0] !== 0xff || fullImage[1] !== 0xd8 || preview[0] !== 0xff || preview[1] !== 0xd8) {
+    throw new Error('Stored image variants are not JPEG files');
+  }
+  console.log(`GIT_LFS_IMAGE_VARIANTS_OK repo=${repoName} full=${fullImage.length} preview=${preview.length}`);
 }
 
 async function runBrowserTest() {
@@ -192,7 +203,7 @@ async function runBrowserTest() {
       throw new Error(`Browser runtime errors: ${runtimeErrors.join(' | ')}`);
     }
     console.log('BROWSER_SYNC_OK runtime_errors=0');
-    await verifyLfsRoundTrip(assetId, image);
+    await verifyLfsRoundTrip(assetId);
   } finally {
     console.log('BROWSER_CONSOLE', browserLogs.join('\n'));
     await browser.close();

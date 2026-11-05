@@ -134,6 +134,9 @@ describe('lfs', () => {
         vi.spyOn(lfsDb, 'getLfsBinary').mockResolvedValue(null);
         vi.spyOn(lfsDb, 'getAllLfsBinaries').mockResolvedValue([]);
         vi.spyOn(lfsDb, 'deleteLfsBinary').mockResolvedValue();
+        vi.spyOn(lfsDb, 'putLfsPreview').mockResolvedValue();
+        vi.spyOn(lfsDb, 'getLfsPreview').mockResolvedValue(null);
+        vi.spyOn(lfsDb, 'deleteLfsPreview').mockResolvedValue();
       });
 
       afterEach(() => {
@@ -156,6 +159,18 @@ describe('lfs', () => {
         await client.stageBinary(new Uint8Array([1]));
         await client.stageBinary(new Uint8Array([2]));
         expect(lfsDb.putLfsBinary).toHaveBeenCalledTimes(2);
+      });
+
+      it('speichert und liest offline verfügbare Vorschaubilder persistent', async () => {
+        const preview = new Uint8Array([4, 5]);
+        vi.spyOn(lfsDb, 'getLfsPreview').mockResolvedValue(preview);
+
+        await client.storePreview('preview-oid', preview);
+
+        expect(lfsDb.putLfsPreview).toHaveBeenCalledWith('preview-oid', preview);
+        await expect(client.getStoredPreview('preview-oid')).resolves.toEqual(preview);
+        await client.removeStoredPreview('preview-oid');
+        expect(lfsDb.deleteLfsPreview).toHaveBeenCalledWith('preview-oid');
       });
 
       it('hasPending gibt true wenn Einträge in IndexedDB', async () => {

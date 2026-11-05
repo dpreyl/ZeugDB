@@ -14,7 +14,10 @@ import {
   putLfsBinary,
   getLfsBinary,
   getAllLfsBinaries,
-  deleteLfsBinary
+  deleteLfsBinary,
+  putLfsPreview,
+  getLfsPreview,
+  deleteLfsPreview
 } from './lfs-db';
 import sha from 'sha.js';
 
@@ -291,8 +294,9 @@ export class LfsClient {
    *
    * @param pointer LFS-Pointer-Objekt
    * @param gitPath Pfad im Git-Repo (für den Cache)
+   * @param cache Soll der Download im Arbeitsspeicher gehalten werden?
    */
-  async download(pointer: Pointer, gitPath: string): Promise<Uint8Array> {
+  async download(pointer: Pointer, gitPath: string, cache = true): Promise<Uint8Array> {
     if (!this.config) {
       throw new Error('LFS-Client nicht konfiguriert');
     }
@@ -342,9 +346,20 @@ export class LfsClient {
     }
 
     const data = new Uint8Array(await response.arrayBuffer());
-    // Im Cache speichern für Vorschau
-    this.cache.set(gitPath, data);
+    if (cache) this.cache.set(gitPath, data);
     return data;
+  }
+
+  async storePreview(oid: string, data: Uint8Array): Promise<void> {
+    await putLfsPreview(oid, data);
+  }
+
+  async getStoredPreview(oid: string): Promise<Uint8Array | null> {
+    return getLfsPreview(oid);
+  }
+
+  async removeStoredPreview(oid: string): Promise<void> {
+    await deleteLfsPreview(oid);
   }
 
   /**

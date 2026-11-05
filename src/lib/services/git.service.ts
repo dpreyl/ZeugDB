@@ -41,6 +41,16 @@ export async function getGitRepo(): Promise<GitRepo> {
   return _repo;
 }
 
+async function configureFotoStore(repo: GitRepo, config: GitConfig): Promise<void> {
+  const fotoStore = getFotoStore();
+  await fotoStore.init(repo);
+  await fotoStore.initLfs({
+    repoUrl: config.url,
+    username: config.username,
+    token: config.token
+  });
+}
+
 /**
  * Reset für Tests.
  */
@@ -90,6 +100,7 @@ export async function cloneRepo(
     onprogress
   });
   saveGitConfig(config);
+  await configureFotoStore(repo, config);
   await loadGitFsToStores(repo);
 }
 
@@ -149,6 +160,7 @@ export async function pullFromRemote(
   onprogress?: (progress: GitProgress) => void
 ): Promise<void> {
   const repo = await getGitRepo();
+  await configureFotoStore(repo, config);
   await repo.pull({
     url: config.url,
     auth: { username: config.username, token: config.token },
@@ -161,6 +173,7 @@ export async function pullFromRemote(
   const store = getAssetStore();
   store.clear();
   persistStore();
+  await getFotoStore().syncPreviews().catch(() => undefined);
 }
 
 /**
@@ -175,6 +188,7 @@ export async function pullToStores(
   onprogress?: (progress: GitProgress) => void
 ): Promise<void> {
   const repo = await getGitRepo();
+  await configureFotoStore(repo, config);
   await repo.pull({
     url: config.url,
     auth: { username: config.username, token: config.token },
@@ -423,6 +437,7 @@ export async function fetchRemote(
   onprogress?: (progress: GitProgress) => void
 ): Promise<void> {
   const repo = await getGitRepo();
+  await configureFotoStore(repo, config);
   const editMode = getEditMode();
   const currentBranch = editMode.isEditing ? editMode.branch : 'main';
 
