@@ -14,6 +14,7 @@ import { persistStore, serializeAssetFile } from './init';
 import { getFotoStore } from '../stores/fotos.store.svelte';
 import { getEditMode } from '../stores/edit-mode.svelte';
 import { getSyncMeta } from '../stores/sync-meta.svelte';
+import { hasLocalStoreChanges } from './store-git-diff';
 
 /**
  * Persistierte Git-Konfiguration.
@@ -236,7 +237,8 @@ export async function getSyncStatus(): Promise<{
   return {
     initialized,
     remoteUrl,
-    hasChanges: changes.length > 0
+    hasChanges: changes.length > 0 ||
+      (initialized && await hasLocalStoreChanges(repo))
   };
 }
 

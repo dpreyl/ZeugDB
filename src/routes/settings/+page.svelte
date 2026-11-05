@@ -7,10 +7,6 @@
     initRepo,
     getGitRepo,
     getSyncStatus,
-    pushToRemote,
-    syncPushWithLfs,
-    pullToStores,
-    commitChanges,
     type GitConfig
   } from '$lib/services/git.service';
   import { getDefaultGitConfigUrl } from '$lib/services/git-defaults';
@@ -23,6 +19,11 @@
     subscribeDiagnosticLogs,
     type DiagnosticEntry
   } from '$lib/services/diagnostics';
+  import {
+    scanLocalAssetHistory,
+    serializeRecoveryScan,
+    type AssetRecoveryScan
+  } from '$lib/services/asset-recovery';
 
   const savedConfig = loadGitConfig();
   let gitUrl = $state(savedConfig?.url ?? getDefaultGitConfigUrl());
@@ -35,6 +36,7 @@
   let error = $state<string | null>(null);
   let lastResult = $state<string | null>(null);
   let diagnosticEntries = $state<DiagnosticEntry[]>([]);
+  let recoveryScan = $state<AssetRecoveryScan | null>(null);
   let isOnline = $state(true);
   let status = $state<{
     initialized: boolean;
@@ -123,66 +125,8 @@
     }
   }
 
-  async function handleCommit() {
-    logDiagnostic('info', 'Commit gestartet');
-    loading = true;
-    error = null;
-    progress = 'Commite...';
-    try {
-      const msg = `ZeugDB Sync ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
-      const sha = await commitChanges(msg, username || 'User', `${username || 'user'}@zeugdb.local`);
-      lastResult = `Commit erfolgreich: ${sha.slice(0, 8)}`;
-      status = await getSyncStatus();
-      logDiagnostic('info', `Commit erfolgreich: ${sha.slice(0, 8)}`);
-    } catch (e: unknown) {
-      reportError('Commit fehlgeschlagen', e, 'Commit fehlgeschlagen');
-    } finally {
-      loading = false;
-      progress = null;
-    }
-  }
-
-  async function handlePush() {
-    logDiagnostic('info', 'Push mit LFS gestartet');
-    loading = true;
-    error = null;
-    progress = 'Sync starte...';
-    try {
-      const config: GitConfig = { url: gitUrl, username, token };
-      // LFS-Binaries hochladen + Git push (offline-first)
-      await syncPushWithLfs(config, 'main', (p) => { progress = p.message; });
-      lastResult = 'Sync erfolgreich — LFS-Binaries und Git-Änderungen hochgeladen';
-      status = await getSyncStatus();
-      logDiagnostic('info', 'Push mit LFS erfolgreich abgeschlossen');
-    } catch (e: unknown) {
-      reportError('Push mit LFS fehlgeschlagen', e, 'Sync fehlgeschlagen');
-    } finally {
-      loading = false;
-      progress = null;
-    }
-  }
-
-  async function handlePull() {
-    logDiagnostic('info', 'Pull gestartet');
-    loading = true;
-    error = null;
-    progress = 'Ziehe...';
-    try {
-      const config: GitConfig = { url: gitUrl, username, token };
-      await pullToStores(config, username || 'User', `${username || 'user'}@zeugdb.local`, (p) => { progress = p.message; });
-      lastResult = 'Pull erfolgreich — Daten aktualisiert';
-      status = await getSyncStatus();
-      logDiagnostic('info', 'Pull erfolgreich abgeschlossen');
-    } catch (e: unknown) {
-      reportError('Pull fehlgeschlagen', e, 'Pull fehlgeschlagen');
-    } finally {
-      loading = false;
-      progress = null;
-    }
-  }
-
   async function handleMigrateImages() {
-    if (!window.confirm('Vorhandene Fotos in JPEG-Originale und Offline-Vorschauen umwandeln? Danach müssen die Änderungen committen und gepusht werden.')) {
+    if (!window.confirm('Vorhandene Fotos in JPEG-Originale und Offline-Vorschauen umwandeln? Danach im Bearbeitungsmodus den Sync-Knopf im Kopfbereich verwenden.')) {
       return;
     }
     logDiagnostic('info', 'Bildmigration gestartet');
@@ -202,6 +146,39 @@
       loading = false;
       progress = null;
     }
+  }
+
+  async function handleRecoveryScan() {
+    if (loading || !status?.initialized) return;
+    loading = true;
+    error = null;
+    recoveryScan = null;
+    progress = 'Durchsuche lokale Git-Historie und gespeicherte Asset-Dateien...';
+    try {
+      recoveryScan = await scanLocalAssetHistory(await getGitRepo());
+      logDiagnostic(
+        recoveryScan.warnings.length > 0 ? 'warn' : 'info',
+        `Wiederherstellungs-Scan abgeschlossen: ${recoveryScan.versions.length} mögliche Asset-Versionen, ${recoveryScan.commitsScanned} Commits geprüft`
+      );
+    } catch (e: unknown) {
+      reportError('Wiederherstellungs-Scan fehlgeschlagen', e, 'Scan fehlgeschlagen');
+    } finally {
+      loading = false;
+      progress = null;
+    }
+  }
+
+  function handleDownloadRecoveryScan() {
+    if (!recoveryScan) return;
+    const blob = new Blob([serializeRecoveryScan(recoveryScan)], {
+      type: 'application/json'
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `zeugdb-wiederherstellung-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   function errorMessage(value: unknown): string {
@@ -301,7 +278,11 @@
     <h3 class="text-sm font-medium text-gray-700 mb-2">Repo-Verwaltung</h3>
     <p class="mb-3 text-xs text-gray-500">
       Die einmalige Bildmigration komprimiert vorhandene Fotos und erstellt Offline-Vorschauen.
-      Danach die Änderungen committen und zum Server pushen.
+      Danach bitte ausschließlich den Sync-Knopf im Kopfbereich verwenden.
+    </p>
+    <p class="mb-3 text-xs text-gray-500">
+      Der Wiederherstellungs-Scan liest nur lokale Git-Historie und Asset-Dateien. Er ändert weder
+      Repository noch App-Daten und kontaktiert keinen Server.
     </p>
 
     <div class="flex gap-2 flex-wrap">
@@ -326,39 +307,78 @@
       >
         Bilder migrieren
       </button>
+      <button
+        onclick={handleRecoveryScan}
+        disabled={loading || !status?.initialized}
+        class="px-4 py-2 bg-gray-700 text-white text-sm rounded-md hover:bg-gray-800 disabled:opacity-50"
+      >
+        Lokale Daten auf Wiederherstellung prüfen
+      </button>
     </div>
+
+    {#if recoveryScan}
+      <div class="mt-3 space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm" aria-live="polite">
+        <p>
+          Scan abgeschlossen: {recoveryScan.versions.length}
+          mögliche Asset-Version{recoveryScan.versions.length === 1 ? '' : 'en'}
+          in {recoveryScan.commitsScanned} Commits gefunden.
+        </p>
+        {#if recoveryScan.versions.length > 0}
+          <button
+            onclick={handleDownloadRecoveryScan}
+            class="px-3 py-2 border border-gray-300 rounded-md text-sm hover:bg-white"
+          >
+            Scan-Ergebnis als JSON herunterladen
+          </button>
+          <ul class="max-h-48 space-y-1 overflow-y-auto text-xs text-gray-700">
+            {#each recoveryScan.versions.slice(0, 50) as version}
+              <li>
+                <strong>{version.assetId}</strong>
+                — {version.date ?? 'ohne Commit-Datum'}
+                — {version.source}
+                {#if version.commitOid}
+                  — {version.commitOid.slice(0, 8)}
+                {/if}
+              </li>
+            {/each}
+          </ul>
+          {#if recoveryScan.versions.length > 50}
+            <p class="text-xs text-gray-500">Weitere Fundstellen stehen im JSON-Download.</p>
+          {/if}
+        {:else}
+          <p class="text-xs text-gray-600">
+            Keine abweichenden Asset-Versionen gefunden. Überschriebene Browser-Speicherdaten
+            haben keine eigene Versionshistorie.
+          </p>
+        {/if}
+        {#if recoveryScan.truncated}
+          <p class="text-xs text-amber-800">
+            Der Scan wurde aus Sicherheitsgründen begrenzt; ältere Daten sind möglicherweise nicht enthalten.
+          </p>
+        {/if}
+        {#if recoveryScan.warnings.length > 0}
+          <ul class="text-xs text-amber-800">
+            {#each recoveryScan.warnings as warning}
+              <li>{warning}</li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    {/if}
   </div>
 
   <div class="pt-4 border-t border-gray-200">
-    <h3 class="text-sm font-medium text-gray-700 mb-2">Sync-Operationen</h3>
+    <h3 class="text-sm font-medium text-gray-700 mb-2">Synchronisation</h3>
 
     {#if progress}
       <p class="text-xs text-gray-500 mb-2">{progress}</p>
     {/if}
 
-    <div class="flex gap-2 flex-wrap">
-      <button
-        onclick={handleCommit}
-        disabled={loading || !status?.initialized}
-        class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 disabled:opacity-50"
-      >
-        Änderungen committen
-      </button>
-      <button
-        onclick={handlePush}
-        disabled={loading || !status?.initialized}
-        class="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50"
-      >
-        Push (zum Server)
-      </button>
-      <button
-        onclick={handlePull}
-        disabled={loading || !status?.initialized}
-        class="px-4 py-2 bg-purple-600 text-white text-sm rounded-md hover:bg-purple-700 disabled:opacity-50"
-      >
-        Pull (vom Server)
-      </button>
-    </div>
+    <p class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+      Direkte Commit-, Push- und Pull-Aktionen sind aus Sicherheitsgründen entfernt.
+      Verwende für Änderungen ausschließlich den Sync-Knopf im Kopfbereich. Dieser speichert
+      zuerst die App-Daten und synchronisiert sie anschließend mit dem Server.
+    </p>
   </div>
 
   <div class="pt-4 border-t border-gray-200">

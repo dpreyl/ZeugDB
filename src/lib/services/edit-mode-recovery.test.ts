@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => {
     createBranch: vi.fn(),
     checkoutBranch: vi.fn()
   };
+  const storeChanges = {
+    hasLocalStoreChanges: vi.fn()
+  };
   const editMode = {
     isEditing: false,
     branch: null as string | null,
@@ -24,7 +27,7 @@ const mocks = vi.hoisted(() => {
       editMode.branch = null;
     })
   };
-  return { repo, editMode };
+  return { repo, editMode, storeChanges };
 });
 
 vi.mock('./git.service', () => ({
@@ -32,6 +35,9 @@ vi.mock('./git.service', () => ({
 }));
 vi.mock('$lib/stores/edit-mode.svelte', () => ({
   getEditMode: () => mocks.editMode
+}));
+vi.mock('./store-git-diff', () => ({
+  hasLocalStoreChanges: (...args: unknown[]) => mocks.storeChanges.hasLocalStoreChanges(...args)
 }));
 
 import { recoverEditMode } from './edit-mode-recovery';
@@ -46,6 +52,7 @@ describe('recoverEditMode', () => {
     mocks.repo.status.mockResolvedValue([]);
     mocks.repo.createBranch.mockResolvedValue(undefined);
     mocks.repo.checkoutBranch.mockResolvedValue(undefined);
+    mocks.storeChanges.hasLocalStoreChanges.mockResolvedValue(false);
   });
 
   it('stellt einen aktiven Edit-Branch auch ohne Session-Daten wieder her', async () => {
@@ -68,6 +75,25 @@ describe('recoverEditMode', () => {
     expect(mocks.repo.createBranch).toHaveBeenCalledWith('edit/recovered-session');
     expect(mocks.repo.checkoutBranch).toHaveBeenCalledWith('edit/recovered-session');
     expect(mocks.editMode.isEditing).toBe(true);
+  });
+
+  it('stellt den Schreibmodus wieder her, wenn gespeicherte Store-Daten noch nicht in Git sind', async () => {
+    mocks.storeChanges.hasLocalStoreChanges.mockResolvedValue(true);
+
+    await recoverEditMode('test-user');
+
+    expect(mocks.repo.createBranch).toHaveBeenCalledWith('edit/recovered-session');
+    expect(mocks.repo.checkoutBranch).toHaveBeenCalledWith('edit/recovered-session');
+    expect(mocks.editMode.isEditing).toBe(true);
+  });
+
+  it('blockiert die Wiederherstellung bei einem Fehler im Datenvergleich', async () => {
+    mocks.storeChanges.hasLocalStoreChanges.mockRejectedValue(new Error('repository read failed'));
+
+    await expect(recoverEditMode('test-user')).rejects.toThrow('repository read failed');
+
+    expect(mocks.repo.createBranch).not.toHaveBeenCalled();
+    expect(mocks.repo.checkoutBranch).not.toHaveBeenCalled();
   });
 
   it('ändert einen sauberen main-Branch nicht', async () => {

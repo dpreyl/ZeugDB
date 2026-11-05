@@ -188,8 +188,9 @@ App fehlende Vorschauen nur, wenn die Browser-Speicherquote dafür genügt und
 ein zusätzlicher Sicherheitsabstand von mindestens 20 MiB frei bleibt.
 
 Vorhandene Fotos lassen sich einmalig über **Einstellungen → Bilder migrieren**
-in das neue Format umwandeln. Danach die Änderungen committen und pushen. Die
-Migration benötigt für vorhandene, noch nicht lokal gespeicherte LFS-Bilder
+in das neue Format umwandeln. Danach im Bearbeitungsmodus ausschließlich den
+Sync-Knopf im Kopfbereich verwenden. Die Migration benötigt für vorhandene,
+noch nicht lokal gespeicherte LFS-Bilder
 eine Verbindung zum Git-Server. Für eigene Gitea-Server muss der Reverse Proxy
 zusätzlich Cross-Origin-`PUT`-Anfragen und die Header `Authorization`,
 `Content-Type` und `Transfer-Encoding` erlauben.

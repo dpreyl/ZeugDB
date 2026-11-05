@@ -1,5 +1,6 @@
 import { getGitRepo } from './git.service';
 import { getEditMode } from '$lib/stores/edit-mode.svelte';
+import { hasLocalStoreChanges } from './store-git-diff';
 
 /**
  * Stellt den Schreibmodus anhand des lokalen Git-Repositorys wieder her.
@@ -18,8 +19,9 @@ export async function recoverEditMode(username: string): Promise<void> {
   }
 
   if (editMode.isEditing) return;
-  const changes = await repo.status();
-  if (changes.length === 0) return;
+  const gitChanges = await repo.status();
+  const hasUnsyncedStoreData = gitChanges.length === 0 && await hasLocalStoreChanges(repo);
+  if (gitChanges.length === 0 && !hasUnsyncedStoreData) return;
 
   editMode.enterEditMode(username, `${username}@zeugdb.local`);
   const editBranch = editMode.branch;

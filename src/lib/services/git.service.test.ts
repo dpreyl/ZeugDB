@@ -20,6 +20,7 @@ import * as assetStoreModule from '$lib/stores/assets.store.svelte';
 import * as locationStoreModule from '$lib/stores/locations.store.svelte';
 import * as typeStoreModule from '$lib/stores/types.store.svelte';
 import * as fotoStoreModule from '$lib/stores/fotos.store.svelte';
+import { resetAssetStore } from '$lib/stores/assets.store.svelte';
 
 beforeEach(() => {
   vi.stubGlobal('indexedDB', {});
@@ -619,5 +620,25 @@ describe('git.service — Status', () => {
     expect(status.initialized).toBe(false);
     expect(status.remoteUrl).toBeUndefined();
     expect(status.hasChanges).toBe(false);
+  });
+
+  it('meldet gespeicherte Asset-Store-Daten als lokale Änderung, auch wenn Git sauber ist', async () => {
+    resetAssetStore();
+    assetStoreModule.getAssetStore().createAsset({
+      id: 'asset-local-only',
+      type: 'projektor',
+      fields: { bezeichnung: 'Noch nicht synchronisiert' }
+    });
+    mockGitRepo({
+      isInitialized: () => Promise.resolve(true),
+      getRemoteUrl: () => Promise.resolve('http://example.com/repo.git'),
+      status: () => Promise.resolve([]),
+      readdir: vi.fn().mockResolvedValue([])
+    });
+
+    const status = await getSyncStatus();
+
+    expect(status.hasChanges).toBe(true);
+    resetAssetStore();
   });
 });
