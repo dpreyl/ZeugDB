@@ -406,6 +406,7 @@
         excludedAssetId={data.id}
         onValueChange={updateField}
         imageUrls={fotoUrls}
+        onImageOpen={handleFotoOpen}
       />
       <AssetBlocks
         definitions={typeBlocks}
@@ -417,6 +418,7 @@
         excludedAssetId={data.id}
         onValueChange={(values) => blockValues = values}
         imageUrls={fotoUrls}
+        onImageOpen={handleFotoOpen}
       />
     {:else}
       <fieldset class="m-0 min-w-0 space-y-4 border-0 p-0">
@@ -444,6 +446,7 @@
           onImageSelect={handleTypeImageSelect}
           onImagesSelect={handleTypeImagesSelect}
           imageUrls={fotoUrls}
+          onImageOpen={handleFotoOpen}
           uploadingImageFields={uploadingImageFields}
         />
         <AssetBlocks
@@ -458,6 +461,7 @@
           onImageSelect={handleBlockImageSelect}
           onImagesSelect={handleBlockImagesSelect}
           imageUrls={fotoUrls}
+          onImageOpen={handleFotoOpen}
           uploadingImageFields={uploadingImageFields}
         />
 

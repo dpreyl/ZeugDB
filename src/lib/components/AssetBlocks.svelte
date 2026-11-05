@@ -9,6 +9,7 @@
   import { getImageFieldPaths } from './asset-image-fields';
   import { getBlockImageFieldKey } from './asset-block-image-fields';
   import { sortByLabel } from './sort-options';
+  import ClickablePhoto from './ClickablePhoto.svelte';
 
   type Props = {
     definitions: BlockDef[];
@@ -20,6 +21,7 @@
     onValueChange: (values: AssetBlockValues) => void;
     onImageSelect?: (blockId: string, instanceId: string, fieldName: string, file: File) => void | Promise<void>;
     onImagesSelect?: (blockId: string, instanceId: string, fieldName: string, files: File[]) => void | Promise<void>;
+    onImageOpen?: (path: string) => Promise<{ data: Uint8Array; mimeType: string }>;
     imageUrls?: Record<string, string>;
     imagePreviews?: Record<string, string | string[]>;
     uploadingImageFields?: string[];
@@ -36,6 +38,7 @@
     onValueChange,
     onImageSelect,
     onImagesSelect,
+    onImageOpen,
     imageUrls = {},
     imagePreviews = {},
     uploadingImageFields = [],
@@ -175,7 +178,18 @@
                     {#if previews.length > 0}
                       <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                         {#each previews as preview, imageIndex (`${imageKey}-${imageIndex}`)}
-                          <img src={preview} alt="{field.name} {imageIndex + 1}" class="h-24 w-full rounded-md border border-gray-200 bg-gray-50 object-contain" />
+                          {@const path = getImageFieldPaths(value, field.art)[imageIndex]}
+                          {#if path && onImageOpen}
+                            <ClickablePhoto
+                              {path}
+                              src={preview}
+                              alt="{field.name} {imageIndex + 1}"
+                              imageClass="h-24 w-full rounded-md border border-gray-200 bg-gray-50 object-contain"
+                              onOpen={onImageOpen}
+                            />
+                          {:else}
+                            <img src={preview} alt="{field.name} {imageIndex + 1}" class="h-24 w-full rounded-md border border-gray-200 bg-gray-50 object-contain" />
+                          {/if}
                         {/each}
                       </div>
                     {/if}
@@ -226,7 +240,18 @@
                       {#if previews.length > 0}
                         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
                           {#each previews as preview, imageIndex (`${field.name}-${imageIndex}`)}
-                            <img src={preview} alt="{field.name} {imageIndex + 1}" class="h-24 w-full rounded-md border border-gray-200 bg-white object-contain" />
+                            {@const path = getImageFieldPaths(value, field.art)[imageIndex]}
+                            {#if path && onImageOpen}
+                              <ClickablePhoto
+                                {path}
+                                src={preview}
+                                alt="{field.name} {imageIndex + 1}"
+                                imageClass="h-24 w-full rounded-md border border-gray-200 bg-white object-contain"
+                                onOpen={onImageOpen}
+                              />
+                            {:else}
+                              <img src={preview} alt="{field.name} {imageIndex + 1}" class="h-24 w-full rounded-md border border-gray-200 bg-white object-contain" />
+                            {/if}
                           {/each}
                         </div>
                       {:else}

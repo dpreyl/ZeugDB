@@ -158,4 +158,37 @@ describe('AssetBlocks', () => {
 
     expect((screen.getByRole('img', { name: 'Mängelfotos 1' }) as HTMLImageElement).src).toContain('blob:photo');
   });
+
+  it('opens component photos through the shared photo loader', async () => {
+    const onImageOpen = vi.fn().mockResolvedValue({
+      data: new Uint8Array([1]),
+      mimeType: 'image/jpeg'
+    });
+    render(AssetBlocks, {
+      props: {
+        definitions,
+        components: [{
+          id: 'port',
+          name: 'Port',
+          fields: [{
+            nr: 0,
+            name: 'Mängelfotos',
+            art: 'images',
+            optionen: null,
+            pflicht: false,
+            sensitiv: false
+          }]
+        }],
+        values: { port: { '0': { Mängelfotos: '["fotos/a.jpg"]' } } },
+        imageUrls: { 'fotos/a.jpg': 'blob:photo' },
+        editable: false,
+        onValueChange: () => {},
+        onImageOpen
+      }
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Bild vergrößern: Mängelfotos 1' }));
+
+    expect(onImageOpen).toHaveBeenCalledWith('fotos/a.jpg');
+  });
 });

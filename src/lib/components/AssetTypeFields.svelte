@@ -4,6 +4,7 @@
   import { fieldOptions } from './asset-type-fields';
   import { getImageFieldPaths } from './asset-image-fields';
   import { sortByLabel } from './sort-options';
+  import ClickablePhoto from './ClickablePhoto.svelte';
 
   type Props = {
     fields: FieldType[];
@@ -15,6 +16,7 @@
     excludedAssetId?: string;
     onImageSelect?: (name: string, file: File) => void | Promise<void>;
     onImagesSelect?: (name: string, files: File[]) => void | Promise<void>;
+    onImageOpen?: (path: string) => Promise<{ data: Uint8Array; mimeType: string }>;
     imageUrls?: Record<string, string>;
     imagePreviews?: Record<string, string | string[]>;
     uploadingImageFields?: string[];
@@ -30,6 +32,7 @@
     excludedAssetId,
     onImageSelect,
     onImagesSelect,
+    onImageOpen,
     imageUrls = {},
     imagePreviews = {},
     uploadingImageFields = []
@@ -79,7 +82,18 @@
             {#if imagePreviewList(field).length > 0}
               <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {#each imagePreviewList(field) as preview, index (`${field.name}-${index}`)}
-                  <img src={preview} alt="{field.name} {index + 1}" class="h-24 w-full rounded-md border border-gray-200 bg-gray-50 object-contain" />
+                  {@const path = imagePaths(field)[index]}
+                  {#if path && onImageOpen}
+                    <ClickablePhoto
+                      {path}
+                      src={preview}
+                      alt="{field.name} {index + 1}"
+                      imageClass="h-24 w-full rounded-md border border-gray-200 bg-gray-50 object-contain"
+                      onOpen={onImageOpen}
+                    />
+                  {:else}
+                    <img src={preview} alt="{field.name} {index + 1}" class="h-24 w-full rounded-md border border-gray-200 bg-gray-50 object-contain" />
+                  {/if}
                 {/each}
               </div>
             {/if}
@@ -106,7 +120,18 @@
             {/if}
           {:else if field.art === 'image'}
             {#if imageUrl(field)}
-              <img src={imageUrl(field)} alt={field.name} class="mt-2 h-32 w-full rounded-md border border-gray-200 bg-gray-50 object-contain" />
+              {@const path = imagePaths(field)[0]}
+              {#if path && onImageOpen}
+                <ClickablePhoto
+                  {path}
+                  src={imageUrl(field)}
+                  alt={field.name}
+                  imageClass="mt-2 h-32 w-full rounded-md border border-gray-200 bg-gray-50 object-contain"
+                  onOpen={onImageOpen}
+                />
+              {:else}
+                <img src={imageUrl(field)} alt={field.name} class="mt-2 h-32 w-full rounded-md border border-gray-200 bg-gray-50 object-contain" />
+              {/if}
             {/if}
             <input
               type="file"
@@ -166,7 +191,18 @@
             {#if (field.art === 'image' || field.art === 'images') && imagePreviewList(field).length > 0}
               <div class="grid grid-cols-2 gap-2">
                 {#each imagePreviewList(field) as preview, index (`${field.name}-${index}`)}
-                  <img src={preview} alt="{field.name} {index + 1}" class="max-h-40 rounded-md object-contain" />
+                  {@const path = imagePaths(field)[index]}
+                  {#if path && onImageOpen}
+                    <ClickablePhoto
+                      {path}
+                      src={preview}
+                      alt="{field.name} {index + 1}"
+                      imageClass="max-h-40 rounded-md object-contain"
+                      onOpen={onImageOpen}
+                    />
+                  {:else}
+                    <img src={preview} alt="{field.name} {index + 1}" class="max-h-40 rounded-md object-contain" />
+                  {/if}
                 {/each}
               </div>
             {:else}

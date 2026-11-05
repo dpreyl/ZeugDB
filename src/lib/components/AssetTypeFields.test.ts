@@ -88,6 +88,27 @@ describe('AssetTypeFields', () => {
     expect(screen.getByRole('img', { name: 'Mängelfotos 2' }).getAttribute('src')).toBe('blob:rear');
   });
 
+  it('opens device type images through the shared photo loader', async () => {
+    const onImageOpen = vi.fn().mockResolvedValue({
+      data: new Uint8Array([1]),
+      mimeType: 'image/jpeg'
+    });
+    render(AssetTypeFields, {
+      props: {
+        fields: [{ nr: 0, name: 'Typenschild', art: 'image', optionen: null, pflicht: false, sensitiv: false }],
+        values: { Typenschild: 'fotos/asset-1/label.jpg' },
+        editable: false,
+        onValueChange: () => {},
+        imageUrls: { 'fotos/asset-1/label.jpg': 'blob:preview' },
+        onImageOpen
+      }
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Bild vergrößern: Typenschild 1' }));
+
+    expect(onImageOpen).toHaveBeenCalledWith('fotos/asset-1/label.jpg');
+  });
+
   it('renders image fields as image uploads and reports the selected file', async () => {
     const onImageSelect = vi.fn();
     const imageField: FieldType = {

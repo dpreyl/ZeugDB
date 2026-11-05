@@ -30,7 +30,7 @@ describe('AssetPhotoGallery', () => {
       }
     });
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Foto 1 vergrößern' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Bild vergrößern: Typenschild-Foto' }));
 
     expect(onFotoOpen).toHaveBeenCalledWith('fotos/asset-1/label.jpg');
     expect(screen.getByRole('dialog', { name: 'Foto ansehen' })).toBeTruthy();
@@ -56,7 +56,7 @@ describe('AssetPhotoGallery', () => {
       }
     });
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Foto 1 vergrößern' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Bild vergrößern: Zusatzfoto 1' }));
 
     expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Kein lokal verfügbares Vorschaubild');
   });
