@@ -65,6 +65,23 @@ describe('EditMode', () => {
     expect(restored.username).toBe('test-user');
   });
 
+  it('übernimmt einen vorhandenen Edit-Branch nach einem neuen Browser-Tab', () => {
+    const mode = getEditMode();
+    mode.resumeEditMode('edit/test-user-20250101-session', 'test-user');
+
+    expect(mode.isEditing).toBe(true);
+    expect(mode.branch).toBe('edit/test-user-20250101-session');
+    expect(mode.username).toBe('test-user');
+    expect(sessionStorage.getItem('zeugdb:edit-session')).not.toBeNull();
+  });
+
+  it('lehnt beim Wiederherstellen Branches außerhalb von edit/ ab', () => {
+    const mode = getEditMode();
+
+    expect(() => mode.resumeEditMode('main', 'test-user')).toThrow('Ungültiger Edit-Branch');
+    expect(mode.isEditing).toBe(false);
+  });
+
   it('erstellt für mehrere Sitzungen am selben Tag unterschiedliche Branches', () => {
     vi.stubGlobal('crypto', {
       randomUUID: vi.fn()

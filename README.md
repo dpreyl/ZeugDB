@@ -57,9 +57,12 @@ und Koordinaten. Verwaltungsaktionen sind ausgeblendet. Zum Bearbeiten zuerst
 oben in der App **Bearbeiten** aktivieren und anschließend bei Standorten oder
 Typen den jeweiligen Bearbeiten-Schalter verwenden; Änderungen erfolgen im
 Edit-Branch und werden erst mit **Sync** ins Git-Repository übertragen. Beim
-Neuladen wird eine aktive Edit-Sitzung im selben Tab fortgesetzt. Erst nach
-**Sync** oder **Verwerfen** kehrt die App in den Read-Only-Modus auf `main`
-zurück. Ein neu gestarteter Edit-Modus erhält weiterhin einen eigenen Branch.
+Neuladen wird eine aktive Edit-Sitzung fortgesetzt. Auch nach dem Schließen des
+Tabs stellt die App den Schreibmodus anhand eines vorhandenen Edit-Branches
+wieder her. Uncommittete Änderungen auf `main` werden vor Freigabe der
+Sync-Aktionen in einen Edit-Branch übernommen. **Holen** bleibt gesperrt, bis
+der lokale Stand geprüft wurde. Erst nach **Sync** oder **Verwerfen** kehrt die
+App in den Read-Only-Modus auf `main` zurück.
 
 ## DGUV-Prüfungsassistent
 

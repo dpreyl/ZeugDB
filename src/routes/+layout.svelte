@@ -6,6 +6,7 @@
   import { initializeStore } from '$lib/services/init';
   import { initFotoService } from '$lib/services/foto-init';
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
+  import { recoverEditMode } from '$lib/services/edit-mode-recovery';
   import {
     loadGitConfig,
     createEditBranch,
@@ -32,6 +33,8 @@
   let loading = $state(false);
   let progress = $state<string | null>(null);
   let error = $state<string | null>(null);
+  let localRecoveryReady = $state(false);
+  let localRecoveryError = $state<string | null>(null);
 
   onMount(() => {
     const handleError = (event: ErrorEvent) => {
@@ -43,11 +46,26 @@
     };
     window.addEventListener('error', handleError);
     window.addEventListener('unhandledrejection', handleRejection);
+    void restoreLocalEditMode();
     return () => {
       window.removeEventListener('error', handleError);
       window.removeEventListener('unhandledrejection', handleRejection);
     };
   });
+
+  async function restoreLocalEditMode() {
+    localRecoveryReady = false;
+    localRecoveryError = null;
+    try {
+      const username = loadGitConfig()?.username || 'user';
+      await recoverEditMode(username);
+    } catch (err: unknown) {
+      localRecoveryError = errorMessage(err);
+      logDiagnostic('error', `Lokaler Bearbeitungsstand konnte nicht wiederhergestellt werden: ${localRecoveryError}`);
+    } finally {
+      localRecoveryReady = true;
+    }
+  }
 
   // Der Offline-Service-Worker darf in Entwicklung keine veralteten Vite-Module cachen.
   if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
@@ -65,6 +83,7 @@
   }
 
   async function handleEnterEditMode() {
+    if (!localRecoveryReady || localRecoveryError) return;
     loading = true;
     error = null;
     progress = 'Erstelle Edit-Branch...';
@@ -86,6 +105,7 @@
   }
 
   async function handleSync() {
+    if (!localRecoveryReady || localRecoveryError) return;
     loading = true;
     error = null;
     progress = 'Synchronisiere...';
@@ -106,6 +126,7 @@
   }
 
   async function handleDiscard() {
+    if (!localRecoveryReady || localRecoveryError) return;
     if (!confirm('Alle lokalen Änderungen verwerfen?')) return;
     loading = true;
     error = null;
@@ -122,6 +143,7 @@
   }
 
   async function handleFetchRemote() {
+    if (!localRecoveryReady || localRecoveryError) return;
     loading = true;
     error = null;
     progress = 'Hole Änderungen...';
@@ -176,21 +198,21 @@
         <div class="flex gap-2">
           <button
             onclick={handleFetchRemote}
-            disabled={loading}
+            disabled={loading || !localRecoveryReady || Boolean(localRecoveryError)}
             class="px-3 py-1 text-sm border border-blue-300 text-blue-700 rounded-md hover:bg-blue-50 disabled:opacity-50"
           >
             {loading ? progress ?? 'Holt...' : 'Holen'}
           </button>
           <button
             onclick={handleDiscard}
-            disabled={loading}
+            disabled={loading || !localRecoveryReady || Boolean(localRecoveryError)}
             class="px-3 py-1 text-sm border border-red-300 text-red-700 rounded-md hover:bg-red-50 disabled:opacity-50"
           >
             Verwerfen
           </button>
           <button
             onclick={handleSync}
-            disabled={loading}
+            disabled={loading || !localRecoveryReady || Boolean(localRecoveryError)}
             class="px-3 py-1 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
           >
             {loading ? progress ?? 'Synchronisiere...' : 'Sync'}
@@ -209,18 +231,31 @@
         <div class="flex gap-2">
           <button
             onclick={handleFetchRemote}
-            disabled={loading}
+            disabled={loading || !localRecoveryReady || Boolean(localRecoveryError)}
             class="px-3 py-1 text-sm border border-blue-300 text-blue-700 rounded-md hover:bg-blue-50 disabled:opacity-50"
           >
             {loading ? progress ?? 'Holt...' : 'Holen'}
           </button>
           <button
             onclick={handleEnterEditMode}
-            disabled={loading}
+            disabled={loading || !localRecoveryReady || Boolean(localRecoveryError)}
             class="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
           >
             {loading ? progress ?? 'Lädt...' : 'Bearbeiten'}
           </button>
+        </div>
+      </div>
+    {/if}
+
+    {#if !localRecoveryReady}
+      <div class="max-w-6xl mx-auto px-4 py-2 text-sm text-blue-800 bg-blue-50">
+        Prüfe den lokalen Bearbeitungsstand, bevor Sync-Aktionen freigegeben werden...
+      </div>
+    {:else if localRecoveryError}
+      <div class="max-w-6xl mx-auto px-4 py-2">
+        <div class="flex flex-wrap items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-800">
+          <span>Lokaler Stand konnte nicht sicher geprüft werden. „Holen“ bleibt zum Schutz deiner Änderungen gesperrt. {localRecoveryError}</span>
+          <button onclick={restoreLocalEditMode} class="shrink-0 underline">Erneut prüfen</button>
         </div>
       </div>
     {/if}

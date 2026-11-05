@@ -16,6 +16,9 @@ export interface EditMode {
   /** In den Schreibmodus wechseln — erzeugt neuen Branch. */
   enterEditMode(username: string, email: string): void;
 
+  /** Einen bereits im lokalen Git-Repository vorhandenen Edit-Branch übernehmen. */
+  resumeEditMode(branch: string, username: string): void;
+
   /** Änderungen verwerfen — zurück zu Read-Only. */
   discard(): void;
 
@@ -83,6 +86,16 @@ class EditModeImpl implements EditMode {
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     this.branch = `edit/${username}-${stamp}-${sessionId}`;
+    this.isEditing = true;
+    this.persistSession();
+  }
+
+  resumeEditMode(branch: string, username: string): void {
+    if (!branch.startsWith('edit/')) {
+      throw new Error('Ungültiger Edit-Branch');
+    }
+    this.branch = branch;
+    this.username = username;
     this.isEditing = true;
     this.persistSession();
   }
