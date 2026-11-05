@@ -17,6 +17,12 @@
   import { getFotoStore } from '$lib/stores/fotos.store.svelte';
   import { initFotoService } from '$lib/services/foto-init';
   import { loadGitFsToStores } from '$lib/services/git-store-loader';
+  import {
+    clearDiagnosticLogs,
+    logDiagnostic,
+    subscribeDiagnosticLogs,
+    type DiagnosticEntry
+  } from '$lib/services/diagnostics';
 
   const savedConfig = loadGitConfig();
   let gitUrl = $state(savedConfig?.url ?? getDefaultGitConfigUrl());
@@ -28,6 +34,8 @@
   let progress = $state<string | null>(null);
   let error = $state<string | null>(null);
   let lastResult = $state<string | null>(null);
+  let diagnosticEntries = $state<DiagnosticEntry[]>([]);
+  let isOnline = $state(true);
   let status = $state<{
     initialized: boolean;
     remoteUrl: string | undefined;
@@ -36,11 +44,30 @@
 
   // LightningFS/IndexedDB sind browsergebunden und dürfen nicht beim SSR starten.
   onMount(() => {
+    const unsubscribe = subscribeDiagnosticLogs((entries) => {
+      diagnosticEntries = entries;
+    });
+    const updateOnlineStatus = () => {
+      isOnline = navigator.onLine;
+    };
+    updateOnlineStatus();
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+
     getSyncStatus().then((nextStatus) => {
       status = nextStatus;
-    }).catch(() => {
-      // Der Status bleibt unbekannt, bis die Browser-Datenbank verfügbar ist.
+      logDiagnostic('info', nextStatus.initialized
+        ? `Repository-Status geladen; lokale Änderungen: ${nextStatus.hasChanges ? 'ja' : 'nein'}`
+        : 'Repository ist noch nicht initialisiert');
+    }).catch((err: unknown) => {
+      logDiagnostic('warn', `Repository-Status konnte nicht geladen werden: ${errorMessage(err)}`);
     });
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('online', updateOnlineStatus);
+      window.removeEventListener('offline', updateOnlineStatus);
+    };
   });
 
   function handleSave() {
@@ -55,11 +82,13 @@
       username: config.username,
       token: config.token
     });
+    logDiagnostic('info', 'Git-Verbindungseinstellungen gespeichert');
     saved = true;
     setTimeout(() => saved = false, 2000);
   }
 
   async function handleClone() {
+    logDiagnostic('info', 'Repository-Klonen gestartet');
     loading = true;
     error = null;
     try {
@@ -70,28 +99,32 @@
       });
       saveGitConfig(config);
       status = await getSyncStatus();
+      logDiagnostic('info', 'Repository erfolgreich geklont');
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Klon fehlgeschlagen';
+      reportError('Repository-Klonen fehlgeschlagen', e, 'Klon fehlgeschlagen');
     } finally {
       loading = false;
     }
   }
 
   async function handleInit() {
+    logDiagnostic('info', 'Initialisierung eines neuen Repositorys gestartet');
     loading = true;
     error = null;
     progress = null;
     try {
       await initRepo(username || 'User', `${username || 'user'}@zeugdb.local`);
       status = await getSyncStatus();
+      logDiagnostic('info', 'Neues Repository erfolgreich initialisiert');
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Init fehlgeschlagen';
+      reportError('Repository-Initialisierung fehlgeschlagen', e, 'Init fehlgeschlagen');
     } finally {
       loading = false;
     }
   }
 
   async function handleCommit() {
+    logDiagnostic('info', 'Commit gestartet');
     loading = true;
     error = null;
     progress = 'Commite...';
@@ -100,8 +133,9 @@
       const sha = await commitChanges(msg, username || 'User', `${username || 'user'}@zeugdb.local`);
       lastResult = `Commit erfolgreich: ${sha.slice(0, 8)}`;
       status = await getSyncStatus();
+      logDiagnostic('info', `Commit erfolgreich: ${sha.slice(0, 8)}`);
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Commit fehlgeschlagen';
+      reportError('Commit fehlgeschlagen', e, 'Commit fehlgeschlagen');
     } finally {
       loading = false;
       progress = null;
@@ -109,6 +143,7 @@
   }
 
   async function handlePush() {
+    logDiagnostic('info', 'Push mit LFS gestartet');
     loading = true;
     error = null;
     progress = 'Sync starte...';
@@ -118,8 +153,9 @@
       await syncPushWithLfs(config, 'main', (p) => { progress = p.message; });
       lastResult = 'Sync erfolgreich — LFS-Binaries und Git-Änderungen hochgeladen';
       status = await getSyncStatus();
+      logDiagnostic('info', 'Push mit LFS erfolgreich abgeschlossen');
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Sync fehlgeschlagen';
+      reportError('Push mit LFS fehlgeschlagen', e, 'Sync fehlgeschlagen');
     } finally {
       loading = false;
       progress = null;
@@ -127,6 +163,7 @@
   }
 
   async function handlePull() {
+    logDiagnostic('info', 'Pull gestartet');
     loading = true;
     error = null;
     progress = 'Ziehe...';
@@ -135,8 +172,9 @@
       await pullToStores(config, username || 'User', `${username || 'user'}@zeugdb.local`, (p) => { progress = p.message; });
       lastResult = 'Pull erfolgreich — Daten aktualisiert';
       status = await getSyncStatus();
+      logDiagnostic('info', 'Pull erfolgreich abgeschlossen');
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Pull fehlgeschlagen';
+      reportError('Pull fehlgeschlagen', e, 'Pull fehlgeschlagen');
     } finally {
       loading = false;
       progress = null;
@@ -147,6 +185,7 @@
     if (!window.confirm('Vorhandene Fotos in JPEG-Originale und Offline-Vorschauen umwandeln? Danach müssen die Änderungen committen und gepusht werden.')) {
       return;
     }
+    logDiagnostic('info', 'Bildmigration gestartet');
     loading = true;
     error = null;
     progress = 'Prüfe und migriere Gerätebilder...';
@@ -156,12 +195,28 @@
       await loadGitFsToStores(await getGitRepo());
       lastResult = `Bildmigration abgeschlossen: ${result.migrated} migriert, ${result.skipped} bereits aktuell`;
       status = await getSyncStatus();
+      logDiagnostic('info', `Bildmigration abgeschlossen: ${result.migrated} migriert, ${result.skipped} übersprungen`);
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Bildmigration fehlgeschlagen';
+      reportError('Bildmigration fehlgeschlagen', e, 'Bildmigration fehlgeschlagen');
     } finally {
       loading = false;
       progress = null;
     }
+  }
+
+  function errorMessage(value: unknown): string {
+    if (value instanceof Error) return value.message;
+    if (typeof value === 'string') return value;
+    try {
+      return JSON.stringify(value) ?? String(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  function reportError(context: string, value: unknown, fallback: string): void {
+    error = value instanceof Error ? value.message : fallback;
+    logDiagnostic('error', `${context}: ${errorMessage(value)}`);
   }
 </script>
 
@@ -318,4 +373,44 @@
       <p class="text-sm text-gray-500">Status wird geladen...</p>
     {/if}
   </div>
+
+  <section class="pt-4 border-t border-gray-200" aria-labelledby="diagnostics-heading">
+    <div class="mb-2 flex items-center justify-between gap-3">
+      <h3 id="diagnostics-heading" class="text-sm font-medium text-gray-700">Diagnose und Protokoll</h3>
+      <button
+        onclick={clearDiagnosticLogs}
+        disabled={diagnosticEntries.length === 0}
+        class="text-xs text-gray-600 underline disabled:opacity-50"
+      >
+        Protokoll leeren
+      </button>
+    </div>
+    <div class="mb-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
+      <p><span class="font-medium">Verbindung:</span> {isOnline ? 'Online' : 'Offline'}</p>
+      <p><span class="font-medium">Aktueller Vorgang:</span> {progress ?? (loading ? 'Wird ausgeführt...' : 'Keiner')}</p>
+      <p><span class="font-medium">Repository:</span>
+        {status ? (status.initialized ? (status.hasChanges ? 'Initialisiert, lokale Änderungen vorhanden' : 'Initialisiert, sauber') : 'Nicht initialisiert') : 'Status unbekannt'}
+      </p>
+    </div>
+    {#if diagnosticEntries.length}
+      <ol
+        aria-label="Diagnoseprotokoll"
+        class="max-h-80 space-y-2 overflow-y-auto rounded-md border border-gray-200 bg-white p-3"
+      >
+        {#each [...diagnosticEntries].reverse() as entry}
+          <li class="flex gap-2 text-xs">
+            <span class="shrink-0 text-gray-400">{new Date(entry.timestamp).toLocaleString()}</span>
+            <span class="shrink-0 font-semibold {entry.level === 'error' ? 'text-red-700' : entry.level === 'warn' ? 'text-amber-700' : 'text-blue-700'}">
+              {entry.level === 'error' ? 'FEHLER' : entry.level === 'warn' ? 'WARNUNG' : 'INFO'}
+            </span>
+            <span class="min-w-0 break-words text-gray-700">{entry.message}</span>
+          </li>
+        {/each}
+      </ol>
+    {:else}
+      <p class="rounded-md border border-gray-200 bg-white p-3 text-xs text-gray-500">
+        Noch keine Meldungen. Warnungen und Fehler werden hier gespeichert.
+      </p>
+    {/if}
+  </section>
 </div>

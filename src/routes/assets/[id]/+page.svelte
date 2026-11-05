@@ -216,6 +216,13 @@
     }
   }
 
+  async function handleFotoOpen(path: string) {
+    await initFotoService();
+    const fotoStore = getFotoStore();
+    if (fotoStore.fehle) throw new Error('Foto-Service nicht verfügbar (kein Git-Repo initialisiert)');
+    return fotoStore.ladeFoto(path);
+  }
+
   async function handleTypeImageSelect(name: string, file: File) {
     await uploadTypeImages(name, [file]);
   }
@@ -486,5 +493,6 @@
     error={fotoError}
     onFotoUpload={handleFotoUpload}
     onFotoDelete={handleFotoLoeschen}
+    onFotoOpen={handleFotoOpen}
   />
 </form>

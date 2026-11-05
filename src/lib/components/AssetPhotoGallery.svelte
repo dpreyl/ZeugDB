@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import type { PhotoRole } from './asset-photo.helpers';
 
   type Props = {
@@ -10,6 +11,7 @@
     error: string;
     onFotoUpload: (event: Event, role: PhotoRole) => void | Promise<void>;
     onFotoDelete: (index: number) => void | Promise<void>;
+    onFotoOpen: (path: string) => Promise<{ data: Uint8Array; mimeType: string }>;
   };
 
   let {
@@ -20,9 +22,55 @@
     uploading,
     error,
     onFotoUpload,
-    onFotoDelete
+    onFotoDelete,
+    onFotoOpen
   }: Props = $props();
+
+  let selectedPhoto = $state<string | null>(null);
+  let detailPhotoUrl = $state<string | null>(null);
+  let photoLoading = $state(false);
+  let photoError = $state('');
+  let openRequest = 0;
+
+  async function openPhoto(path: string) {
+    selectedPhoto = path;
+    photoLoading = true;
+    photoError = '';
+    clearDetailPhotoUrl();
+    const request = ++openRequest;
+    try {
+      const { data, mimeType } = await onFotoOpen(path);
+      if (request !== openRequest) return;
+      const bytes = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+      detailPhotoUrl = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+    } catch (error) {
+      if (request === openRequest) {
+        photoError = error instanceof Error ? error.message : 'Foto konnte nicht geöffnet werden';
+      }
+    } finally {
+      if (request === openRequest) photoLoading = false;
+    }
+  }
+
+  function closePhoto() {
+    openRequest += 1;
+    selectedPhoto = null;
+    photoLoading = false;
+    photoError = '';
+    clearDetailPhotoUrl();
+  }
+
+  function clearDetailPhotoUrl() {
+    if (detailPhotoUrl) URL.revokeObjectURL(detailPhotoUrl);
+    detailPhotoUrl = null;
+  }
+
+  onDestroy(clearDetailPhotoUrl);
 </script>
+
+<svelte:window onkeydown={(event) => {
+  if (selectedPhoto && event.key === 'Escape') closePhoto();
+}} />
 
 <div class="bg-white rounded-lg shadow border border-gray-200 p-6 space-y-4">
   <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Gerätefotos</h3>
@@ -84,11 +132,18 @@
       {#each fotos as pfad, index}
         <div class="relative group rounded-lg border border-gray-200 overflow-hidden bg-gray-50">
           {#if fotoUrls[pfad]}
-            <img
-              src={fotoUrls[pfad]}
-              alt={fotoRollenzuordnung.typenschild === pfad ? 'Typenschild-Foto' : fotoRollenzuordnung.uebersicht === pfad ? 'Übersichtsbild' : `Zusatzfoto ${index + 1}`}
-              class="h-28 w-full object-contain p-1"
-            />
+            <button
+              type="button"
+              onclick={() => void openPhoto(pfad)}
+              aria-label="Foto {index + 1} vergrößern"
+              class="block w-full cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <img
+                src={fotoUrls[pfad]}
+                alt={fotoRollenzuordnung.typenschild === pfad ? 'Typenschild-Foto' : fotoRollenzuordnung.uebersicht === pfad ? 'Übersichtsbild' : `Zusatzfoto ${index + 1}`}
+                class="h-28 w-full object-contain p-1"
+              />
+            </button>
           {:else}
             <div class="flex items-center justify-center h-28 text-xs text-gray-400 p-2">
               {pfad.split('/').pop()}
@@ -105,7 +160,7 @@
               ✕
             </button>
           {/if}
-          <span class="absolute bottom-1 left-1 px-1.5 py-0.5 text-[10px] bg-gray-800 bg-opacity-70 text-white rounded truncate max-w-[80%]">
+          <span class="pointer-events-none absolute bottom-1 left-1 px-1.5 py-0.5 text-[10px] bg-gray-800 bg-opacity-70 text-white rounded truncate max-w-[80%]">
             {fotoRollenzuordnung.typenschild === pfad
               ? 'Typenschild'
               : fotoRollenzuordnung.uebersicht === pfad
@@ -119,3 +174,33 @@
     <p class="text-sm text-gray-400 italic">Noch keine Fotos hochgeladen.</p>
   {/if}
 </div>
+
+{#if selectedPhoto}
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Foto ansehen"
+    tabindex="-1"
+  >
+    <button
+      type="button"
+      onclick={closePhoto}
+      aria-label="Foto schließen"
+      class="absolute right-4 top-4 rounded-full bg-white/20 px-3 py-2 text-2xl text-white hover:bg-white/30"
+    >
+      ×
+    </button>
+    {#if photoLoading}
+      <p class="text-white" role="status">Foto wird geladen…</p>
+    {:else if photoError}
+      <p class="rounded bg-red-900/80 p-4 text-white" role="alert">{photoError}</p>
+    {:else if detailPhotoUrl}
+      <img
+        src={detailPhotoUrl}
+        alt="Foto in voller Größe"
+        class="max-h-full max-w-full object-contain"
+      />
+    {/if}
+  </div>
+{/if}

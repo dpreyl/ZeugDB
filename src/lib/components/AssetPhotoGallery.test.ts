@@ -1,8 +1,66 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import AssetPhotoGallery from './AssetPhotoGallery.svelte';
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe('AssetPhotoGallery', () => {
+  it('opens a photo through the detail-page image loader and closes the viewer', async () => {
+    const onFotoOpen = vi.fn().mockResolvedValue({
+      data: new Uint8Array([1, 2]),
+      mimeType: 'image/jpeg'
+    });
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:full-photo'),
+      revokeObjectURL: vi.fn()
+    });
+    render(AssetPhotoGallery, {
+      props: {
+        fotos: ['fotos/asset-1/label.jpg'],
+        fotoUrls: { 'fotos/asset-1/label.jpg': 'blob:preview' },
+        fotoRollenzuordnung: { typenschild: 'fotos/asset-1/label.jpg', uebersicht: '' },
+        editable: false,
+        uploading: false,
+        error: '',
+        onFotoUpload: vi.fn(),
+        onFotoDelete: vi.fn(),
+        onFotoOpen
+      }
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Foto 1 vergrößern' }));
+
+    expect(onFotoOpen).toHaveBeenCalledWith('fotos/asset-1/label.jpg');
+    expect(screen.getByRole('dialog', { name: 'Foto ansehen' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Foto in voller Größe' }).getAttribute('src'))
+      .toBe('blob:full-photo');
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Foto schließen' }));
+    expect(screen.queryByRole('dialog', { name: 'Foto ansehen' })).toBeNull();
+  });
+
+  it('shows an error in the viewer when the photo cannot be loaded', async () => {
+    render(AssetPhotoGallery, {
+      props: {
+        fotos: ['fotos/asset-1/label.jpg'],
+        fotoUrls: { 'fotos/asset-1/label.jpg': 'blob:preview' },
+        fotoRollenzuordnung: { typenschild: '', uebersicht: '' },
+        editable: false,
+        uploading: false,
+        error: '',
+        onFotoUpload: vi.fn(),
+        onFotoDelete: vi.fn(),
+        onFotoOpen: vi.fn().mockRejectedValue(new Error('Kein lokal verfügbares Vorschaubild'))
+      }
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Foto 1 vergrößern' }));
+
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Kein lokal verfügbares Vorschaubild');
+  });
+
   it('delegates role uploads and photo deletion', async () => {
     const onFotoUpload = vi.fn();
     const onFotoDelete = vi.fn();
@@ -15,7 +73,8 @@ describe('AssetPhotoGallery', () => {
         uploading: false,
         error: '',
         onFotoUpload,
-        onFotoDelete: onFotoDelete
+        onFotoDelete: onFotoDelete,
+        onFotoOpen: vi.fn()
       }
     });
 
@@ -39,7 +98,8 @@ describe('AssetPhotoGallery', () => {
         uploading: false,
         error: '',
         onFotoUpload: vi.fn(),
-        onFotoDelete: vi.fn()
+        onFotoDelete: vi.fn(),
+        onFotoOpen: vi.fn()
       }
     });
 

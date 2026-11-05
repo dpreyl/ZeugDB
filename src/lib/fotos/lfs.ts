@@ -20,6 +20,7 @@ import {
   deleteLfsPreview
 } from './lfs-db';
 import sha from 'sha.js';
+import { logDiagnostic } from '$lib/services/diagnostics';
 
 /**
  * LFS-Pointer-Information (OID + Größe).
@@ -241,6 +242,7 @@ export class LfsClient {
       // Fehler vom Server? → in IndexedDB belassen
       if (obj.errors && obj.errors.length > 0) {
         console.warn(`LFS-Upload-Fehler (${obj.oid}):`, obj.errors[0].message);
+        logDiagnostic('warn', `LFS-Upload-Fehler (${obj.oid}): ${obj.errors[0].message}`);
         uploadFailed = true;
         continue;
       }
@@ -251,6 +253,7 @@ export class LfsClient {
         : obj.actions?.upload;
       if (!uploadAction) {
         console.warn(`LFS: Keine Upload-URL für ${obj.oid} (bereits vorhanden?`);
+        logDiagnostic('warn', `LFS: Keine Upload-URL für ${obj.oid} (Objekt möglicherweise bereits vorhanden)`);
         // Wahrscheinlich bereits auf dem Server → aus IndexedDB entfernen
         await deleteLfsBinary(obj.oid);
         continue;
@@ -279,6 +282,7 @@ export class LfsClient {
         await deleteLfsBinary(obj.oid);
       } catch (err) {
         console.warn(`LFS-Upload fehlgeschlagen (${obj.oid}):`, err);
+        logDiagnostic('warn', `LFS-Upload fehlgeschlagen (${obj.oid}): ${err instanceof Error ? err.message : String(err)}`);
         // Bleibt in IndexedDB für nächsten Versuch
         uploadFailed = true;
       }

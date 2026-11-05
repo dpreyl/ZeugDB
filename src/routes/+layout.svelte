@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { base } from '$app/paths';
   import '../app.css';
+  import { logDiagnostic } from '$lib/services/diagnostics';
   import { initializeStore } from '$lib/services/init';
   import { initFotoService } from '$lib/services/foto-init';
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
@@ -17,8 +19,11 @@
 
   initializeStore();
   // Foto-Store lazily initialisieren (Git-Repo + LFS falls konfiguriert)
-  initFotoService().catch(() => {
-    // Foto-Service optional — ignorieren wenn Git nicht initialisiert
+  initFotoService().catch((err: unknown) => {
+    // Foto-Service optional — Fehler bleiben zur Diagnose im Protokoll.
+    if (typeof window !== 'undefined') {
+      logDiagnostic('warn', `Foto-Service konnte nicht initialisiert werden: ${errorMessage(err)}`);
+    }
   });
 
   const editMode = getEditMode();
@@ -28,6 +33,22 @@
   let progress = $state<string | null>(null);
   let error = $state<string | null>(null);
 
+  onMount(() => {
+    const handleError = (event: ErrorEvent) => {
+      const location = event.filename ? ` (${event.filename}:${event.lineno})` : '';
+      logDiagnostic('error', `JavaScript-Fehler: ${event.message}${location}`);
+    };
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      logDiagnostic('error', `Nicht behandelter asynchroner Fehler: ${errorMessage(event.reason)}`);
+    };
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleRejection);
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleRejection);
+    };
+  });
+
   // Der Offline-Service-Worker darf in Entwicklung keine veralteten Vite-Module cachen.
   if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
     if (import.meta.env.DEV) {
@@ -36,7 +57,10 @@
         if (registrations.length && navigator.serviceWorker.controller) {
           window.location.reload();
         }
-      }).catch(err => console.warn('[SW] Dev-Registrierung konnte nicht entfernt werden:', err));
+      }).catch(err => {
+        console.warn('[SW] Dev-Registrierung konnte nicht entfernt werden:', err);
+        logDiagnostic('warn', `Service-Worker-Registrierung konnte nicht entfernt werden: ${errorMessage(err)}`);
+      });
     }
   }
 
@@ -53,6 +77,7 @@
       progress = 'Edit-Modus aktiv';
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Edit-Modus fehlgeschlagen';
+      logDiagnostic('error', `Edit-Modus konnte nicht gestartet werden: ${errorMessage(e)}`);
       editMode.discard();
     } finally {
       loading = false;
@@ -74,6 +99,7 @@
       });
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Sync fehlgeschlagen';
+      logDiagnostic('error', `Sync im Edit-Modus fehlgeschlagen: ${errorMessage(e)}`);
     } finally {
       loading = false;
     }
@@ -88,6 +114,7 @@
       await discardEditBranch();
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Verwerfen fehlgeschlagen';
+      logDiagnostic('error', `Lokale Änderungen konnten nicht verworfen werden: ${errorMessage(e)}`);
     } finally {
       loading = false;
       progress = null;
@@ -108,8 +135,19 @@
       });
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Holen fehlgeschlagen';
+      logDiagnostic('error', `Änderungen konnten nicht geholt werden: ${errorMessage(e)}`);
     } finally {
       loading = false;
+    }
+  }
+
+  function errorMessage(value: unknown): string {
+    if (value instanceof Error) return value.message;
+    if (typeof value === 'string') return value;
+    try {
+      return JSON.stringify(value) ?? String(value);
+    } catch {
+      return String(value);
     }
   }
 </script>

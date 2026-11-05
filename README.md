@@ -168,6 +168,10 @@ standardmäßig aus dem Hostnamen der App gebildet:
 einen persönlichen Zugriffstoken mit Repository-Lese-/Schreibrechten und
 wähle **Klonen**. Danach können Assets, Typen und Standorte lokal bearbeitet
 und über **Sync** ins Repository übertragen werden.
+Unter **Einstellungen → Diagnose und Protokoll** werden Verbindungsstatus,
+aktuelle Vorgänge sowie die letzten 200 Info-, Warn- und Fehlermeldungen
+angezeigt. Das Protokoll bleibt lokal im Browser gespeichert und lässt sich
+dort leeren; Zugriffstoken werden nicht protokolliert.
 
 Fotos lassen sich auf Mobilgeräten über **Foto aufnehmen oder auswählen**
 direkt mit der Kamera erfassen. Dabei ist kein manuelles Speichern oder
