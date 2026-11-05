@@ -75,6 +75,16 @@ describe('GitRepo Branch-Management', () => {
     );
   });
 
+  it('archiviert einen Edit-Branch unter einem lokalen History-Branch', async () => {
+    await repo.archiveBranch('edit/test-2025-session', 'history/test-2025-session');
+
+    expect(git.branch).toHaveBeenCalledWith(expect.objectContaining({
+      ref: 'history/test-2025-session',
+      object: 'edit/test-2025-session',
+      checkout: false
+    }));
+  });
+
   it('persistiert geklonte Repos vollständig, bevor clone zurückkehrt', async () => {
     const flush = vi.spyOn(repo.getFs().promises, 'flush');
 

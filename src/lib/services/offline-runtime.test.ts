@@ -9,6 +9,12 @@ describe('offline runtime deployment', () => {
     expect(() => readFileSync('src/service-worker.js', 'utf8')).not.toThrow();
   });
 
+  it('disables automatic service worker registration so development can opt out', () => {
+    const config = readFileSync('svelte.config.js', 'utf8');
+
+    expect(config).toMatch(/serviceWorker:\s*\{\s*register:\s*false\s*\}/);
+  });
+
   it('provides HTTPS for trusted offline use from other devices on the LAN', () => {
     const compose = readFileSync('docker-compose.yml', 'utf8');
     const caddyfile = readFileSync('caddy/Caddyfile', 'utf8');

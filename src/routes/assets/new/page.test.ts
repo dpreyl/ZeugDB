@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   },
   draftFiles: {} as Record<string, Record<string, File[]>>,
   persistStore: vi.fn(),
+  saveStoreChanges: vi.fn().mockResolvedValue('commit-id'),
   goto: vi.fn()
 }));
 
@@ -50,6 +51,7 @@ vi.mock('$lib/services/form-draft-files', () => ({
   }
 }));
 vi.mock('$lib/services/init', () => ({ persistStore: mocks.persistStore }));
+vi.mock('$lib/services/store-save', () => ({ saveStoreChanges: mocks.saveStoreChanges }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 
 import NewAssetPage from './+page.svelte';
@@ -137,6 +139,7 @@ describe('Asset-Neuanlage mit Bildfeldern', () => {
         fotos: 'fotos/asset-draft/photo-0.png'
       }
     }));
+    expect(mocks.saveStoreChanges).toHaveBeenCalledWith('Asset angelegt: Kamera Eingang');
     expect(localStorage.getItem('zeugdb:form-draft:asset:new')).toBeNull();
     expect(mocks.draftFiles['asset:new']).toBeUndefined();
   });

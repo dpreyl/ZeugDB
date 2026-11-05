@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   hasCurrentDguvInspection,
+  getLocalDate,
   getNextInspectionIndex,
   getInspectionCandidateDetails,
   getMeasurementsForProtectionClass,
@@ -9,6 +10,11 @@ import {
 } from './dguv.helpers';
 
 describe('DGUV assistant helpers', () => {
+  it('formats local calendar dates without shifting the day', () => {
+    expect(getLocalDate(new Date(2026, 0, 5, 12))).toBe('2026-01-05');
+    expect(getLocalDate(new Date(2024, 1, 29, 12))).toBe('2024-02-29');
+  });
+
   it('zeigt identifizierende Gerätefelder und ignoriert leere oder andere Felder', () => {
     expect(getInspectionCandidateDetails({
       Hersteller: ' Bosch ',

@@ -306,6 +306,22 @@ export class GitRepo implements RepoFs {
   }
 
   /**
+   * Behält einen lokalen Branch unter einem separaten History-Ref erreichbar.
+   */
+  async archiveBranch(ref: string, archiveRef: string): Promise<void> {
+    await this.createParentDirectories(`/.git/refs/heads/${archiveRef}`);
+    await git.branch({
+      fs: this.fs,
+      dir: '/',
+      ref: archiveRef,
+      object: ref,
+      checkout: false,
+      force: true
+    });
+    await this.promises.flush();
+  }
+
+  /**
    * Wechselt zu einem bestehenden Branch.
    */
   async checkoutBranch(ref: string, force = false): Promise<void> {

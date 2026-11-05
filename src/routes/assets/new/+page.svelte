@@ -19,9 +19,10 @@
   import { getFotoStore } from '$lib/stores/fotos.store.svelte';
   import { initFotoService } from '$lib/services/foto-init';
   import { getImageFieldPaths, uploadImageFields } from '$lib/components/asset-image-fields';
+  import { getAssetSelectOptions } from '$lib/components/asset-select-options';
   import { clearFormDraft, readFormDraft, writeFormDraft } from '$lib/services/form-drafts';
   import { formDraftFiles } from '$lib/services/form-draft-files';
-  import { persistStore } from '$lib/services/init';
+  import { saveStoreChanges } from '$lib/services/store-save';
   import { getLocationSelectOptions } from '$lib/locations/location-tree';
   import { sortByLabel } from '$lib/components/sort-options';
   import { base } from '$app/paths';
@@ -35,6 +36,7 @@
   let selectedImages = $state<Record<string, File[]>>({});
   let imagePreviews = $state<Record<string, string | string[]>>({});
   let saving = $state(false);
+  let pendingSaveMessage = $state('');
   let savingDraftFields = $state<string[]>([]);
   let imageError = $state('');
   let restoringDraft = $state(true);
@@ -51,16 +53,7 @@
   const locationOptions = $derived(getLocationSelectOptions(locations.all));
   const typeFields = $derived(resolveAssetTypeFields(type, types.all));
   const typeBlocks = $derived(resolveAssetTypeBlocks(type, types.all));
-  const assetOptions = $derived(sortByLabel(assets.all.map(asset => {
-    const assetType = types.all.find(item => item.id === asset.type);
-    const fields = assets.getFields(asset.id);
-    const details = [fields.hersteller, fields.modell].filter(Boolean).join(' ');
-    return {
-      id: asset.id,
-      type: asset.type,
-      label: [assetType?.name ?? asset.type, details, asset.id].filter(Boolean).join(' · ')
-    };
-  }), option => option.label));
+  const assetOptions = $derived(getAssetSelectOptions(assets.all, types.all, id => assets.getFields(id)));
   let blockTypeId = '';
 
   $effect(() => {
@@ -271,7 +264,9 @@
         },
         blocks: savedBlocks
       });
-      persistStore();
+      pendingSaveMessage = `Asset angelegt: ${designation.trim()}`;
+      await saveStoreChanges(pendingSaveMessage);
+      pendingSaveMessage = '';
       draftCompleted = true;
       clearFormDraft('asset:new');
       await formDraftFiles.clear('asset:new');
@@ -280,6 +275,21 @@
       imageError = err instanceof Error ? err.message : 'Bild-Upload fehlgeschlagen';
     } finally {
       saving = false;
+    }
+  }
+
+  async function retrySave() {
+    if (!pendingSaveMessage) return;
+    try {
+      await saveStoreChanges(pendingSaveMessage);
+      pendingSaveMessage = '';
+      imageError = '';
+      draftCompleted = true;
+      clearFormDraft('asset:new');
+      await formDraftFiles.clear('asset:new');
+      goto(`${base}/`);
+    } catch (err) {
+      imageError = err instanceof Error ? err.message : 'Änderungen konnten nicht gesichert werden.';
     }
   }
 
@@ -360,6 +370,11 @@
 
     {#if imageError}
       <p class="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{imageError}</p>
+    {/if}
+    {#if pendingSaveMessage}
+      <button type="button" onclick={retrySave} class="text-sm text-red-800 underline">
+        Lokalen Commit erneut versuchen
+      </button>
     {/if}
 
     <div class="flex gap-3 pt-2">

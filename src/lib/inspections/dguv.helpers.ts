@@ -40,7 +40,7 @@ export function hasCurrentDguvInspection(
   now = new Date()
 ): boolean {
   if (Number.isNaN(now.getTime())) return false;
-  const today = formatLocalDate(now);
+  const today = getLocalDate(now);
   const cutoff = getDateMonthsBefore(now, CURRENT_INSPECTION_MAX_AGE_MONTHS);
   return Object.values(blocks.pruefung ?? {}).some(inspection => {
     const date = inspection['Prüfdatum'];
@@ -122,7 +122,7 @@ function normalizeSearchText(value: string): string {
     .toLocaleLowerCase('de-DE');
 }
 
-function formatLocalDate(date: Date): string {
+export function getLocalDate(date = new Date()): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');

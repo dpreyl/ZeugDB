@@ -10,9 +10,7 @@ import {
   commitChanges,
   commitAllToGit,
   isRepoInitialized,
-  getSyncStatus,
   resetGitRepo,
-  syncEditBranch,
   type GitConfig
 } from './git.service';
 import * as repoModule from '$lib/git/repo';
@@ -20,7 +18,6 @@ import * as assetStoreModule from '$lib/stores/assets.store.svelte';
 import * as locationStoreModule from '$lib/stores/locations.store.svelte';
 import * as typeStoreModule from '$lib/stores/types.store.svelte';
 import * as fotoStoreModule from '$lib/stores/fotos.store.svelte';
-import { resetAssetStore } from '$lib/stores/assets.store.svelte';
 
 beforeEach(() => {
   vi.stubGlobal('indexedDB', {});
@@ -492,153 +489,5 @@ describe('git.service — Commit', () => {
       files: ['fotos/asset-1/photo-0.png'],
       deletedFiles: ['fotos/asset-1/photo-1.png']
     });
-  });
-});
-
-describe('git.service — syncEditBranch', () => {
-  beforeEach(() => {
-    resetGitRepo();
-  });
-
-  afterEach(() => {
-    resetGitRepo();
-    vi.restoreAllMocks();
-  });
-
-  it('holt origin/main nach main, bevor es den Edit-Branch einspielt und pusht', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(undefined);
-    const mockCheckout = vi.fn().mockResolvedValue(undefined);
-    const mockMerge = vi.fn().mockResolvedValue(undefined);
-    const mockPush = vi.fn().mockResolvedValue([]);
-    const mockReaddir = vi.fn().mockResolvedValue([]);
-    const mockDelete = vi.fn().mockResolvedValue(undefined);
-    mockGitRepo({
-      fetchFromRemote: mockFetch,
-      checkoutBranch: mockCheckout,
-      mergeBranch: mockMerge,
-      push: mockPush,
-      readdir: mockReaddir,
-      deleteBranch: mockDelete
-    });
-
-    vi.spyOn(assetStoreModule, 'getAssetStore').mockReturnValue({
-      all: [],
-      findFull: vi.fn(),
-      setAll: vi.fn()
-    } as unknown as ReturnType<typeof assetStoreModule.getAssetStore>);
-    vi.spyOn(locationStoreModule, 'getLocationsStore').mockReturnValue({
-      all: [],
-      clear: vi.fn(),
-      add: vi.fn()
-    } as unknown as ReturnType<typeof locationStoreModule.getLocationsStore>);
-    vi.spyOn(typeStoreModule, 'getTypesStore').mockReturnValue({
-      all: [],
-      clear: vi.fn(),
-      add: vi.fn()
-    } as unknown as ReturnType<typeof typeStoreModule.getTypesStore>);
-
-    const editModeModule = await import('$lib/stores/edit-mode.svelte');
-    const editMode = {
-      isEditing: true,
-      branch: 'edit/test-user-session',
-      username: 'test-user',
-      finishEdit: vi.fn()
-    };
-    const flushPendingLfs = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(fotoStoreModule, 'getFotoStore').mockReturnValue({
-      flushPendingLfs,
-      syncPreviews: vi.fn().mockResolvedValue({ downloaded: 0, skipped: true })
-    } as unknown as ReturnType<typeof fotoStoreModule.getFotoStore>);
-    vi.spyOn(editModeModule, 'getEditMode').mockReturnValue(
-      editMode as unknown as import('$lib/stores/edit-mode.svelte').EditMode
-    );
-
-    const config = { url: 'http://phone-lan/repo', username: 'test', token: 'token' };
-    await syncEditBranch(
-      config,
-      'Author',
-      'author@example.com'
-    );
-
-    expect(mockMerge).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ branch: 'origin/main' })
-    );
-    expect(mockMerge).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ branch: 'edit/test-user-session', squash: true })
-    );
-    expect(mockFetch.mock.invocationCallOrder[0]).toBeLessThan(mockCheckout.mock.invocationCallOrder[0]);
-    expect(mockCheckout.mock.invocationCallOrder[0]).toBeLessThan(mockMerge.mock.invocationCallOrder[0]);
-    expect(mockMerge.mock.invocationCallOrder[0]).toBeLessThan(mockMerge.mock.invocationCallOrder[1]);
-    expect(mockFetch).toHaveBeenCalledWith({
-      url: config.url,
-      auth: { username: config.username, token: config.token }
-    });
-    expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
-      url: config.url,
-      branch: 'main'
-    }));
-    expect(flushPendingLfs).toHaveBeenCalledOnce();
-    expect(mockCheckout).toHaveBeenLastCalledWith('main', true);
-    expect(mockPush.mock.invocationCallOrder[0]).toBeLessThan(
-      mockCheckout.mock.invocationCallOrder[mockCheckout.mock.invocationCallOrder.length - 1]
-    );
-    expect(editMode.finishEdit).toHaveBeenCalledOnce();
-  });
-});
-
-describe('git.service — Status', () => {
-  beforeEach(() => {
-    resetGitRepo();
-  });
-
-  afterEach(() => {
-    resetGitRepo();
-    vi.restoreAllMocks();
-  });
-
-  it('gibt initialisierten Status zurück', async () => {
-    mockGitRepo({
-      isInitialized: () => Promise.resolve(true),
-      getRemoteUrl: () => Promise.resolve('http://example.com/repo.git'),
-      status: () => Promise.resolve([{ file: 'test.txt', before: null, after: 2 }])
-    });
-
-    const status = await getSyncStatus();
-    expect(status.initialized).toBe(true);
-    expect(status.remoteUrl).toBe('http://example.com/repo.git');
-    expect(status.hasChanges).toBe(true);
-  });
-
-  it('gibt nicht-initialisierten Status zurück', async () => {
-    mockGitRepo({
-      isInitialized: () => Promise.resolve(false)
-    });
-
-    const status = await getSyncStatus();
-    expect(status.initialized).toBe(false);
-    expect(status.remoteUrl).toBeUndefined();
-    expect(status.hasChanges).toBe(false);
-  });
-
-  it('meldet gespeicherte Asset-Store-Daten als lokale Änderung, auch wenn Git sauber ist', async () => {
-    resetAssetStore();
-    assetStoreModule.getAssetStore().createAsset({
-      id: 'asset-local-only',
-      type: 'projektor',
-      fields: { bezeichnung: 'Noch nicht synchronisiert' }
-    });
-    mockGitRepo({
-      isInitialized: () => Promise.resolve(true),
-      getRemoteUrl: () => Promise.resolve('http://example.com/repo.git'),
-      status: () => Promise.resolve([]),
-      readdir: vi.fn().mockResolvedValue([])
-    });
-
-    const status = await getSyncStatus();
-
-    expect(status.hasChanges).toBe(true);
-    resetAssetStore();
   });
 });

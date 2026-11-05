@@ -34,6 +34,7 @@ const mocks = vi.hoisted(() => ({
     uploadFoto: vi.fn().mockResolvedValue('fotos/asset-1/photo.png')
   },
   persistStore: vi.fn(),
+  saveStoreChanges: vi.fn().mockResolvedValue('commit-id'),
   goto: vi.fn()
 }));
 
@@ -43,6 +44,7 @@ vi.mock('$lib/stores/locations.store.svelte', () => ({ getLocationsStore: () => 
 vi.mock('$lib/stores/fotos.store.svelte', () => ({ getFotoStore: () => mocks.foto }));
 vi.mock('$lib/stores/edit-mode.svelte', () => ({ getEditMode: () => ({ isEditing: true }) }));
 vi.mock('$lib/services/init', () => ({ persistStore: mocks.persistStore }));
+vi.mock('$lib/services/store-save', () => ({ saveStoreChanges: mocks.saveStoreChanges }));
 vi.mock('$lib/services/foto-init', () => ({ initFotoService: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 
@@ -135,6 +137,7 @@ describe('DGUV-Prüfungsassistent', () => {
         }
       }
     }));
+    expect(mocks.saveStoreChanges).toHaveBeenCalledWith('DGUV-Prüfung gespeichert: asset-existing');
   });
 
   it('legt ein neues Gerät mit Erstprüfung an und verlangt Messwerte abhängig von SK I', async () => {
@@ -183,5 +186,6 @@ describe('DGUV-Prüfungsassistent', () => {
       }
     }));
     expect(mocks.assets.updateAsset).not.toHaveBeenCalled();
+    expect(mocks.saveStoreChanges).toHaveBeenCalledWith('DGUV-Prüfung gespeichert: asset-reserved');
   });
 });

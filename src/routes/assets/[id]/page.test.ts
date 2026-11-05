@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
     loescheFoto: vi.fn()
   },
   persistStore: vi.fn(),
+  saveStoreChanges: vi.fn().mockResolvedValue('commit-id'),
   goto: vi.fn()
 }));
 
@@ -38,6 +39,7 @@ vi.mock('$lib/stores/locations.store.svelte', () => ({ getLocationsStore: () => 
 vi.mock('$lib/stores/fotos.store.svelte', () => ({ getFotoStore: () => mocks.fotos }));
 vi.mock('$lib/services/foto-init', () => ({ initFotoService: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('$lib/services/init', () => ({ persistStore: mocks.persistStore }));
+vi.mock('$lib/services/store-save', () => ({ saveStoreChanges: mocks.saveStoreChanges }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 
 import AssetPage from './+page.svelte';
@@ -63,10 +65,41 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe('Bildfelder im Asset-Detail', () => {
+  it('erstellt beim Löschen einen lokalen Git-Commit', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(AssetPage, {
+      props: {
+        data: {
+          id: 'asset-to-delete',
+          type: 'kamera',
+          bezeichnung: 'Kamera Eingang',
+          hersteller: '',
+          modell: '',
+          seriennummer: '',
+          inventarnummer: '',
+          zustand: '',
+          notizen: '',
+          fotos: '',
+          blocks: {},
+          location: null,
+          erstellt: null,
+          geaendert: null
+        }
+      }
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Löschen' }));
+
+    expect(mocks.assets.remove).toHaveBeenCalledWith('asset-to-delete');
+    expect(mocks.saveStoreChanges).toHaveBeenCalledWith('Asset gelöscht: asset-to-delete');
+    expect(mocks.goto).toHaveBeenCalledWith(expect.stringMatching(/\/$/));
+  });
+
   it('stellt ungespeicherte Asset-Änderungen nach dem erneuten Öffnen wieder her', async () => {
     const data = {
       id: 'asset-1',

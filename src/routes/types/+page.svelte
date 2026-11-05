@@ -4,7 +4,7 @@
   import { getComponentsStore } from '$lib/stores/components.store.svelte';
   import type { ComponentDefinition, TypeDefinition } from '$lib/parser/types';
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
-  import { persistStore } from '$lib/services/init';
+  import { saveStoreChanges } from '$lib/services/store-save';
   import TypeEditor from '$lib/components/TypeEditor.svelte';
   import ComponentEditor from '$lib/components/ComponentEditor.svelte';
   import { clearFormDraft, readFormDraft, writeFormDraft } from '$lib/services/form-drafts';
@@ -20,6 +20,8 @@
   let editingComponentId = $state<string | null>(null);
   let activeDraft = $state<{ typeId: string | null } | null>(null);
   let restoredActiveDraft = $state(false);
+  let saveError = $state('');
+  let pendingSaveMessage = $state('');
 
   function resetForm() {
     showForm = false;
@@ -43,10 +45,11 @@
     selectedId = type.id;
   }
 
-  function handleSave(type: TypeDefinition) {
+  async function handleSave(type: TypeDefinition) {
     if (!editMode.isEditing) return;
     store.add(type);
-    persistStore();
+    pendingSaveMessage = `Typ gespeichert: ${type.id}`;
+    if (!await commitPendingSave()) return;
     resetForm();
   }
 
@@ -57,18 +60,36 @@
     showComponentForm = true;
   }
 
-  function handleComponentSave(component: ComponentDefinition) {
+  async function handleComponentSave(component: ComponentDefinition) {
     if (!editMode.isEditing) return;
     components.add(component);
-    persistStore();
+    pendingSaveMessage = `Komponente gespeichert: ${component.id}`;
+    if (!await commitPendingSave()) return;
     resetForm();
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     if (!editMode.isEditing) return;
     store.remove(id);
     if (selectedId === id) selectedId = null;
-    persistStore();
+    pendingSaveMessage = `Typ gelöscht: ${id}`;
+    await commitPendingSave();
+  }
+
+  async function commitPendingSave(): Promise<boolean> {
+    try {
+      await saveStoreChanges(pendingSaveMessage);
+      pendingSaveMessage = '';
+      saveError = '';
+      return true;
+    } catch (err) {
+      saveError = err instanceof Error ? err.message : 'Änderung konnte nicht gesichert werden.';
+      return false;
+    }
+  }
+
+  async function retrySave() {
+    await commitPendingSave();
   }
 
   onMount(() => {
@@ -103,6 +124,12 @@
 </script>
 
 <div class="space-y-6">
+  {#if saveError}
+    <div role="alert" class="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+      <p>Lokaler Git-Commit fehlgeschlagen: {saveError}</p>
+      <button type="button" onclick={retrySave} class="mt-2 underline">Commit erneut versuchen</button>
+    </div>
+  {/if}
   <div class="flex items-center justify-between">
     <div>
       <h2 class="text-xl font-semibold text-gray-900">Typen</h2>

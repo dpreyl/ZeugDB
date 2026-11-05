@@ -7,6 +7,9 @@
   import { initFotoService } from '$lib/services/foto-init';
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
   import { recoverEditMode } from '$lib/services/edit-mode-recovery';
+  import { unregisterDevelopmentServiceWorkers } from '$lib/services/dev-service-worker';
+  import { registerProductionServiceWorker } from '$lib/services/service-worker-registration';
+  import EditChangesPanel from '$lib/components/EditChangesPanel.svelte';
   import {
     loadGitConfig,
     createEditBranch,
@@ -33,6 +36,7 @@
   let loading = $state(false);
   let progress = $state<string | null>(null);
   let error = $state<string | null>(null);
+  let showChangesPanel = $state(false);
   let localRecoveryReady = $state(false);
   let localRecoveryError = $state<string | null>(null);
 
@@ -70,14 +74,15 @@
   // Der Offline-Service-Worker darf in Entwicklung keine veralteten Vite-Module cachen.
   if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
     if (import.meta.env.DEV) {
-      navigator.serviceWorker.getRegistrations().then(async registrations => {
-        await Promise.all(registrations.map(registration => registration.unregister()));
-        if (registrations.length && navigator.serviceWorker.controller) {
-          window.location.reload();
-        }
-      }).catch(err => {
+      unregisterDevelopmentServiceWorkers(
+        navigator.serviceWorker
+      ).catch(err => {
         console.warn('[SW] Dev-Registrierung konnte nicht entfernt werden:', err);
         logDiagnostic('warn', `Service-Worker-Registrierung konnte nicht entfernt werden: ${errorMessage(err)}`);
+      });
+    } else {
+      registerProductionServiceWorker(false, navigator.serviceWorker, base).catch(err => {
+        logDiagnostic('warn', `Service Worker konnte nicht registriert werden: ${errorMessage(err)}`);
       });
     }
   }
@@ -211,6 +216,13 @@
             Verwerfen
           </button>
           <button
+            onclick={() => showChangesPanel = true}
+            disabled={loading || !localRecoveryReady || Boolean(localRecoveryError)}
+            class="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50"
+          >
+            Änderungen ansehen
+          </button>
+          <button
             onclick={handleSync}
             disabled={loading || !localRecoveryReady || Boolean(localRecoveryError)}
             class="px-3 py-1 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
@@ -245,6 +257,13 @@
           </button>
         </div>
       </div>
+    {/if}
+
+    {#if showChangesPanel && editMode.branch}
+      <EditChangesPanel
+        branch={editMode.branch}
+        onClose={() => showChangesPanel = false}
+      />
     {/if}
 
     {#if !localRecoveryReady}

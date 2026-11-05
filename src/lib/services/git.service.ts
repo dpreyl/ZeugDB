@@ -11,6 +11,7 @@ import { syncTypesToGit } from './type-git-sync';
 import { syncComponentsToGit } from './component-git-sync';
 import { loadGitFsToStores } from './git-store-loader';
 import { persistStore, serializeAssetFile } from './init';
+import { archiveEditBranchHistory } from './git-history';
 import { getFotoStore } from '../stores/fotos.store.svelte';
 import { getEditMode } from '../stores/edit-mode.svelte';
 import { getSyncMeta } from '../stores/sync-meta.svelte';
@@ -339,6 +340,11 @@ export async function syncEditBranch(
     auth: { username: config.username, token: config.token }
   });
 
+  // Lokale Save-Commits bleiben auch dann erreichbar, wenn der spätere Push
+  // oder die Branch-Bereinigung fehlschlägt.
+  onprogress?.({ message: 'Bewahre lokale Feldhistorie auf...' });
+  await archiveEditBranchHistory(repo, branch);
+
   // 2. Zu main wechseln
   onprogress?.({ message: 'Wechsle zu main...' });
   await repo.checkoutBranch('main');
@@ -386,12 +392,12 @@ export async function syncEditBranch(
   onprogress?.({ message: 'Aktualisiere lokalen Stand...' });
   await repo.checkoutBranch('main', true);
 
-  // 5. Edit-Branch löschen
+  // 5. Edit-Branch erst nach erfolgreichem Push löschen.
   onprogress?.({ message: 'Räume Edit-Branch auf...' });
   try {
     await repo.deleteBranch(branch);
   } catch {
-    // Ignorieren
+    // Der archivierte History-Branch enthält weiterhin alle Save-Commits.
   }
 
   // 6. Stores aus Git-FS neu laden

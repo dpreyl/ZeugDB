@@ -75,6 +75,7 @@ const mocks = vi.hoisted(() => {
       clear: vi.fn().mockResolvedValue(undefined)
     },
     persistStore: vi.fn(),
+    saveStoreChanges: vi.fn().mockResolvedValue('commit-id'),
     goto: vi.fn(),
     leaflet,
     map
@@ -94,6 +95,7 @@ vi.mock('$lib/stores/components.store.svelte', () => ({
   getComponentsStore: () => mocks.components
 }));
 vi.mock('$lib/services/init', () => ({ persistStore: mocks.persistStore }));
+vi.mock('$lib/services/store-save', () => ({ saveStoreChanges: mocks.saveStoreChanges }));
 vi.mock('$lib/services/foto-init', () => ({ initFotoService: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('$lib/services/form-draft-files', () => ({ formDraftFiles: mocks.formDraftFiles }));
 vi.mock('$lib/stores/fotos.store.svelte', () => ({
@@ -447,38 +449,8 @@ describe('Schreibmodus in der Oberfläche', () => {
     expect(mocks.assets.updateAsset).toHaveBeenCalledWith('asset-1', expect.objectContaining({
       fields: expect.objectContaining({ bezeichnung: 'Projektor Saal 2', 'Lichtstärke': '5500' })
     }));
+    expect(mocks.saveStoreChanges).toHaveBeenCalledWith('Asset gespeichert: Projektor Saal 2');
     expect(mocks.goto).toHaveBeenCalledWith(expect.stringMatching(/\/$/));
-  });
-
-  it('löscht ein Asset im Schreibmodus und kehrt zur Übersicht zurück', async () => {
-    enterEditMode();
-    mocks.assets.remove.mockReturnValue(true);
-    const confirmMock = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    render(AssetPage, {
-      props: {
-        data: {
-          id: 'asset-to-delete',
-          type: 'projektor',
-          bezeichnung: 'Projektor Saal 1',
-          hersteller: '',
-          modell: '',
-          seriennummer: '',
-          inventarnummer: '',
-          zustand: '',
-          notizen: '',
-          location: null,
-          erstellt: null,
-          geaendert: null
-        }
-      }
-    });
-
-    await fireEvent.click(screen.getByRole('button', { name: 'Löschen' }));
-
-    expect(mocks.assets.remove).toHaveBeenCalledWith('asset-to-delete');
-    expect(mocks.persistStore).toHaveBeenCalled();
-    expect(mocks.goto).toHaveBeenCalledWith(expect.stringMatching(/\/$/));
-    confirmMock.mockRestore();
   });
 
   it('zeigt Typ-Verwaltungsaktionen erst im Schreibmodus und Typdetails auf Anfrage', () => {

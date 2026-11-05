@@ -8,14 +8,15 @@
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
   import { getFotoStore } from '$lib/stores/fotos.store.svelte';
   import { initFotoService } from '$lib/services/foto-init';
-  import { persistStore } from '$lib/services/init';
+  import { saveStoreChanges } from '$lib/services/store-save';
   import { getLocationSelectOptions } from '$lib/locations/location-tree';
   import { sortByLabel } from '$lib/components/sort-options';
   import { photoRoleField, type PhotoRole } from '$lib/components/asset-photo.helpers';
+  import InspectionPhotoInputs from '$lib/components/InspectionPhotoInputs.svelte';
   import type { AssetBlockValues } from '$lib/components/asset-blocks.helpers';
   import {
     getInspectionCandidateDetails, getMeasurementsForProtectionClass, hasCurrentDguvInspection,
-    getNextInspectionIndex,
+    getLocalDate, getNextInspectionIndex,
     searchInspectionCandidates
   } from '$lib/inspections/dguv.helpers';
   import { loadInspectionSession, saveInspectionSession } from '$lib/inspections/inspection-session';
@@ -41,6 +42,7 @@
   let error = $state('');
   let success = $state('');
   let saving = $state(false);
+  let pendingSaveMessage = $state('');
   let inspectionDate = $state('');
 
   const locationOptions = $derived(getLocationSelectOptions(locations.all));
@@ -93,9 +95,7 @@
       : '';
     inspectionDate = getLocalDate();
   });
-  function saveSession() {
-    saveInspectionSession({ examiner, locationId });
-  }
+  function saveSession() { saveInspectionSession({ examiner, locationId }); }
 
   function selectAsset(id: string) {
     const asset = assets.findById(id);
@@ -223,7 +223,9 @@
           blocks: { pruefung: { '0': inspection } }
         });
       }
-      persistStore();
+      pendingSaveMessage = `DGUV-Prüfung gespeichert: ${assetId}`;
+      await saveStoreChanges(pendingSaveMessage);
+      pendingSaveMessage = '';
       saveSession();
       resetForNextInspection();
       success = 'Prüfung gespeichert. Prüfer und Raum bleiben für die nächste Prüfung übernommen.';
@@ -234,17 +236,28 @@
     }
   }
 
+  async function retrySave() {
+    if (!pendingSaveMessage) return;
+    saving = true;
+    error = '';
+    try {
+      await saveStoreChanges(pendingSaveMessage);
+      pendingSaveMessage = '';
+      saveSession();
+      resetForNextInspection();
+      success = 'Prüfung gespeichert. Prüfer und Raum bleiben für die nächste Prüfung übernommen.';
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Prüfung konnte nicht gesichert werden.';
+    } finally {
+      saving = false;
+    }
+  }
+
   function getFieldIgnoreCase(fields: Record<string, string>, target: string): string {
     const key = Object.keys(fields).find(name => name.toLocaleLowerCase('de-DE') === target.toLocaleLowerCase('de-DE'));
     return key ? fields[key] ?? '' : '';
   }
 
-  function getLocalDate(): string {
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${now.getFullYear()}-${month}-${day}`;
-  }
 </script>
 
 <svelte:head>
@@ -404,31 +417,10 @@
               {/if}
             </select>
           </label>
-          <div class="grid gap-3 sm:grid-cols-2">
-            {#each photoRoles as { role, label, path: currentPath }}
-              <label class="block rounded-md border border-gray-200 p-3 text-sm font-medium text-gray-700">
-                {label} <span class="font-normal text-gray-500">(optional)</span>
-                <span class="mt-1 block text-xs font-normal text-gray-500">
-                  {currentPath ? 'Bild vorhanden' : 'Noch kein Bild hinterlegt'}
-                </span>
-                {#if currentPath}
-                  <span class="block truncate text-xs font-normal text-gray-500">{currentPath.split('/').pop()}</span>
-                {/if}
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                  capture="environment"
-                  aria-label="{label} aufnehmen (optional)"
-                  onchange={(event) => {
-                    const file = event.currentTarget.files?.[0] ?? null;
-                    if (role === 'uebersicht') overviewFile = file;
-                    else labelFile = file;
-                  }}
-                  class="mt-2 block w-full text-xs text-gray-500"
-                />
-              </label>
-            {/each}
-          </div>
+          <InspectionPhotoInputs
+            photoRoles={photoRoles}
+            onFileSelect={(role, file) => role === 'uebersicht' ? overviewFile = file : labelFile = file}
+          />
           {#if measurementFields.length}
             <fieldset class="space-y-3 border-t border-gray-100 pt-4">
               <legend class="font-medium text-gray-900">Messwerte für Schutzklasse {protectionClass}</legend>
@@ -478,6 +470,11 @@
 
     {#if error}
       <p class="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p>
+    {/if}
+    {#if pendingSaveMessage}
+      <button type="button" onclick={retrySave} class="text-sm text-red-800 underline">
+        Lokalen Prüfungs-Commit erneut versuchen
+      </button>
     {/if}
     {#if success}
       <p class="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800" role="status">{success}</p>

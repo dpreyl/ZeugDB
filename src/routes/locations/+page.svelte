@@ -6,7 +6,7 @@
   import { getAssetStore } from '$lib/stores/assets.store.svelte';
   import { getEditMode } from '$lib/stores/edit-mode.svelte';
   import type { Location } from '$lib/parser/types';
-  import { persistStore } from '$lib/services/init';
+  import { saveStoreChanges } from '$lib/services/store-save';
   import { flattenLocationTree } from '$lib/locations/location-tree';
   import { clearFormDraft, readFormDraft, writeFormDraft } from '$lib/services/form-drafts';
 
@@ -29,6 +29,8 @@
   let activeDraft = $state<{ locationId: string | null } | null>(null);
   let restoredActiveDraft = $state(false);
   let selectedId = $state<string | null>(null);
+  let saveError = $state('');
+  let pendingSaveMessage = $state('');
   const selectedLocation = $derived(store.all.find((location) => location.id === selectedId));
 
   onMount(() => {
@@ -80,23 +82,47 @@
     clearFormDraft('location:active');
   }
 
-  function saveLocation(location: Location) {
+  async function saveLocation(location: Location) {
     if (!editMode.isEditing) return;
     store.add(location);
-    persistStore();
+    pendingSaveMessage = `Standort gespeichert: ${location.name ?? location.id}`;
+    if (!await commitPendingSave()) return;
     selectedId = location.id ?? null;
     resetForm();
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     if (!editMode.isEditing) return;
     store.remove(id);
     if (selectedId === id) selectedId = null;
-    persistStore();
+    pendingSaveMessage = `Standort gelöscht: ${id}`;
+    await commitPendingSave();
+  }
+
+  async function commitPendingSave(): Promise<boolean> {
+    try {
+      await saveStoreChanges(pendingSaveMessage);
+      pendingSaveMessage = '';
+      saveError = '';
+      return true;
+    } catch (err) {
+      saveError = err instanceof Error ? err.message : 'Standortänderung konnte nicht gesichert werden.';
+      return false;
+    }
+  }
+
+  async function retrySave() {
+    await commitPendingSave();
   }
 </script>
 
 <div class="space-y-6">
+  {#if saveError}
+    <div role="alert" class="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+      <p>Lokaler Git-Commit fehlgeschlagen: {saveError}</p>
+      <button type="button" onclick={retrySave} class="mt-2 underline">Commit erneut versuchen</button>
+    </div>
+  {/if}
   <div class="flex items-center justify-between">
     <div>
       <h2 class="text-xl font-semibold text-gray-900">Standorte</h2>

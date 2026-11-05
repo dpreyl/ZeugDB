@@ -12,6 +12,9 @@ const config = {
       fallback: 'index.html',
       precompress: false
     }),
+    serviceWorker: {
+      register: false
+    },
     paths: {
       base: normalizeBasePath(process.env.BASE_PATH)
     },

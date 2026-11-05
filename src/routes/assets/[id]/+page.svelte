@@ -11,6 +11,11 @@
   import AssetTypeFields from '$lib/components/AssetTypeFields.svelte';
   import AssetBlocks from '$lib/components/AssetBlocks.svelte';
   import AssetPhotoGallery from '$lib/components/AssetPhotoGallery.svelte';
+  import AssetSummary from '$lib/components/AssetSummary.svelte';
+  import AssetFieldHistory from '$lib/components/AssetFieldHistory.svelte';
+  import { getAssetHistoryFields } from '$lib/components/asset-history-fields';
+  import { loadPhotoPreviewBlobs } from '$lib/components/asset-photo-previews';
+  import { getAssetSelectOptions } from '$lib/components/asset-select-options';
   import { resolveAssetTypeFields } from '$lib/components/asset-type-fields';
   import { createBlockValues, resolveAssetTypeBlocks, type AssetBlockValues } from '$lib/components/asset-blocks.helpers';
   import {
@@ -22,7 +27,7 @@
   } from '$lib/components/asset-block-image-fields';
   import { getFotoStore } from '$lib/stores/fotos.store.svelte';
   import { initFotoService } from '$lib/services/foto-init';
-  import { persistStore } from '$lib/services/init';
+  import { saveStoreChanges } from '$lib/services/store-save';
   import { photoRoleField, setPhotoRolePath, type PhotoRole } from '$lib/components/asset-photo.helpers';
   import { appendImageFieldPaths, getImageFieldPaths, serializeImagePaths } from '$lib/components/asset-image-fields';
   import { clearFormDraft, readFormDraft, writeFormDraft } from '$lib/services/form-drafts';
@@ -44,6 +49,8 @@
     createBlockValues(resolveAssetTypeBlocks(data.type, types.all), data.blocks ?? {})
   ));
   let fotoError = $state('');
+  let saveError = $state('');
+  let pendingSaveMessage = $state('');
   let uploading = $state(false);
   let uploadingImageFields = $state<string[]>([]);
   let fotoUrls = $state<Record<string, string>>({});
@@ -71,16 +78,7 @@
   const typeFields = $derived(resolveAssetTypeFields(selectedType, types.all));
   const typeBlocks = $derived(resolveAssetTypeBlocks(selectedType, types.all));
   const locationOptions = $derived(getLocationSelectOptions(locations.all));
-  const assetOptions = $derived(sortByLabel(assets.all.map(asset => {
-    const assetType = types.all.find(item => item.id === asset.type);
-    const fields = assets.getFields(asset.id);
-    const details = [fields.hersteller, fields.modell].filter(Boolean).join(' ');
-    return {
-      id: asset.id,
-      type: asset.type,
-      label: [assetType?.name ?? asset.type, details, asset.id].filter(Boolean).join(' · ')
-    };
-  }), option => option.label));
+  const assetOptions = $derived(getAssetSelectOptions(assets.all, types.all, id => assets.getFields(id)));
 
   $effect(() => {
     if (restoringDraft || draftCompleted) return;
@@ -111,7 +109,20 @@
     fieldValues[name] = value;
   }
 
-  function handleSave(event: SubmitEvent) {
+  async function commitSave(message: string): Promise<boolean> {
+    pendingSaveMessage = message;
+    try {
+      await saveStoreChanges(message);
+      pendingSaveMessage = '';
+      saveError = '';
+      return true;
+    } catch (err) {
+      saveError = err instanceof Error ? err.message : 'Änderungen konnten nicht gesichert werden.';
+      return false;
+    }
+  }
+
+  async function handleSave(event: SubmitEvent) {
     event.preventDefault();
     if (!editMode.isEditing || !designation.trim()) return;
     const fd = new FormData(event.currentTarget as HTMLFormElement);
@@ -126,19 +137,19 @@
       blocks: blockValues,
       location: String(fd.get('location') ?? '') || null
     });
+    if (!await commitSave(`Asset gespeichert: ${designation.trim()}`)) return;
     draftCompleted = true;
     clearFormDraft(draftKey);
-    persistStore();
     goto(`${base}/`);
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!editMode.isEditing) return;
     if (!confirm('Asset ' + data.id + ' wirklich löschen?')) return;
     if (!assets.remove(data.id)) return;
+    if (!await commitSave(`Asset gelöscht: ${data.id}`)) return;
     draftCompleted = true;
     clearFormDraft(draftKey);
-    persistStore();
     goto(`${base}/`);
   }
 
@@ -169,7 +180,7 @@
       const liste = [...new Set([...fotos, pfad])];
       const fields = setPhotoRolePath(assetStore.getFields(data.id), role, pfad);
       assetStore.setFields(data.id, { ...fields, fotos: liste.join(',') });
-      persistStore();
+      if (!await commitSave(`Asset-Foto hinzugefügt: ${data.id}`)) return;
     } catch (err) {
       fotoError = err instanceof Error ? err.message : 'Upload fehlgeschlagen';
     } finally {
@@ -210,7 +221,7 @@
       }
       assetStore.setFields(data.id, { fotos: neueListe.join(','), ...roleFields, ...imageFields });
       blockValues = removeBlockImagePath(blockValues, components.all, pfad);
-      persistStore();
+      if (!await commitSave(`Asset-Foto gelöscht: ${data.id}`)) return;
     } catch (err) {
       fotoError = err instanceof Error ? err.message : 'Löschen fehlgeschlagen';
     }
@@ -221,14 +232,6 @@
     const fotoStore = getFotoStore();
     if (fotoStore.fehle) throw new Error('Foto-Service nicht verfügbar (kein Git-Repo initialisiert)');
     return fotoStore.ladeFoto(path);
-  }
-
-  async function handleTypeImageSelect(name: string, file: File) {
-    await uploadTypeImages(name, [file]);
-  }
-
-  async function handleTypeImagesSelect(name: string, files: File[]) {
-    await uploadTypeImages(name, files);
   }
 
   async function uploadTypeImages(name: string, files: File[]) {
@@ -254,7 +257,7 @@
       const updatedFields = appendImageFieldPaths(currentFields, name, paths, multiple);
       fieldValues[name] = updatedFields[name];
       getAssetStore().setFields(data.id, updatedFields);
-      persistStore();
+      if (!await commitSave(`Asset-Bildfeld gespeichert: ${name}`)) return;
     } catch (err) {
       fotoError = err instanceof Error ? err.message : 'Bild-Upload fehlgeschlagen';
     } finally {
@@ -304,7 +307,7 @@
         ...uploadedPaths
       ])];
       assets.setFields(data.id, { ...currentFields, fotos: paths.join(',') });
-      persistStore();
+      if (!await commitSave(`Asset-Komponentenbild gespeichert: ${name}`)) return;
     } catch (err) {
       fotoError = err instanceof Error ? err.message : 'Bild-Upload fehlgeschlagen';
     } finally {
@@ -339,18 +342,15 @@
           .filter(field => field.art === 'image' || field.art === 'images')
           .flatMap(field => getImageFieldPaths(String(data[field.name] ?? ''), field.art));
         const blockImagePaths = getBlockImagePaths(blockValues, components.all);
-        for (const path of new Set([...fotos, ...typeImagePaths, ...blockImagePaths])) {
-          try {
-            const { data: raw, mimeType } = await fotoStore.ladeFoto(path);
-            if (cancelled) return;
-            const bytes = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
-            fotoUrls = {
-              ...fotoUrls,
-              [path]: URL.createObjectURL(new Blob([bytes as BlobPart], { type: mimeType }))
-            };
-          } catch {
-            // Fehlende/offline nicht verfügbare Vorschauen bleiben als Dateiname sichtbar.
-          }
+        const previews = await loadPhotoPreviewBlobs(
+          [...fotos, ...typeImagePaths, ...blockImagePaths],
+          path => fotoStore.ladeFoto(path)
+        );
+        if (!cancelled) {
+          fotoUrls = {
+            ...fotoUrls,
+            ...Object.fromEntries(Object.entries(previews).map(([path, blob]) => [path, URL.createObjectURL(blob)]))
+          };
         }
       } catch {
         // Fotos sind optional, falls das Git-Repo noch nicht initialisiert ist.
@@ -371,32 +371,24 @@
     <h2 class="text-xl font-semibold text-gray-900">Asset {data.id}</h2>
   </div>
 
+  {#if saveError}
+    <div role="alert" class="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+      <p>Lokaler Git-Commit fehlgeschlagen: {saveError}</p>
+      <button type="button" onclick={() => void commitSave(pendingSaveMessage)} class="mt-2 underline">
+        Commit erneut versuchen
+      </button>
+    </div>
+  {/if}
+
   <div class="bg-white rounded-lg shadow border border-gray-200 p-6 space-y-4">
     {#if !editMode.isEditing}
-      <div class="flex items-center justify-between gap-3">
-        <h3 class="font-semibold text-gray-900">Assetdetails</h3>
-        <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">Nur Ansicht</span>
-      </div>
+      <AssetSummary
+        designation={designation}
+        type={data.type}
+        locationId={data.location}
+        locationName={data.location ? locations.findById(data.location)?.name ?? data.location : '—'}
+      />
       <p class="text-sm text-gray-500" role="status">Zum Bearbeiten den Schreibmodus aktivieren.</p>
-      <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-        <div>
-          <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Bezeichnung</dt>
-          <dd class="mt-1 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-900">{designation || 'Ohne Bezeichnung'}</dd>
-        </div>
-        <div>
-          <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Typ</dt>
-          <dd class="mt-1 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-900">{data.type}</dd>
-        </div>
-        <div>
-          <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Standort</dt>
-          <dd class="mt-1 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-900">
-            {data.location ? locations.findById(data.location)?.name ?? data.location : '—'}
-          </dd>
-          {#if data.location}
-            <a href="{base}/locations" class="mt-1 inline-block text-xs text-blue-600 hover:underline">Auf der Standortkarte ansehen</a>
-          {/if}
-        </div>
-      </dl>
       <AssetTypeFields
         fields={typeFields}
         values={fieldValues}
@@ -443,8 +435,8 @@
           types={types.all}
           excludedAssetId={data.id}
           onValueChange={updateField}
-          onImageSelect={handleTypeImageSelect}
-          onImagesSelect={handleTypeImagesSelect}
+          onImageSelect={(name, file) => uploadTypeImages(name, [file])}
+          onImagesSelect={uploadTypeImages}
           imageUrls={fotoUrls}
           onImageOpen={handleFotoOpen}
           uploadingImageFields={uploadingImageFields}
@@ -498,5 +490,9 @@
     onFotoUpload={handleFotoUpload}
     onFotoDelete={handleFotoLoeschen}
     onFotoOpen={handleFotoOpen}
+  />
+  <AssetFieldHistory
+    assetId={data.id}
+    fields={getAssetHistoryFields(assets.findFull(data.id) ?? data)}
   />
 </form>
