@@ -56,11 +56,15 @@ ansehen** die Feld- und Blockdefinitionen, bei Standorten die Identität, Art
 und Koordinaten. Verwaltungsaktionen sind ausgeblendet. Zum Bearbeiten zuerst
 oben in der App **Bearbeiten** aktivieren und anschließend bei Standorten oder
 Typen den jeweiligen Bearbeiten-Schalter verwenden; Änderungen erfolgen im
-Edit-Branch gespeichert. Jedes Speichern erzeugt dort sofort einen lokalen
-Git-Commit; **Sync** überträgt weiterhin einen zusammengefassten Commit an den
-Server. Mit **Änderungen ansehen** lässt sich der gespeicherte Stand vor dem
-Sync mit `main` vergleichen. Beim Neuladen wird eine aktive Edit-Sitzung
-fortgesetzt. Auch nach dem Schließen des Tabs stellt die App den Schreibmodus
+Änderungen werden im Edit-Branch gespeichert. Jedes Speichern erzeugt dort
+sofort einen lokalen Git-Commit; **Sync** überträgt weiterhin einen
+zusammengefassten Commit an den Server. Mit **Änderungen ansehen** lässt sich
+der gespeicherte Stand vor dem Sync mit `main` vergleichen. Die Statusleiste
+nennt statt des internen Branch-Namens die zuletzt bearbeitete Asset-Bezeichnung
+und bei genügend Platz auch den Standort. Auf kleineren Bildschirmen bleibt die
+Standortangabe ausgeblendet. Bei anderen Änderungen zeigt sie die
+Commit-Beschreibung. Beim Neuladen wird eine aktive Edit-Sitzung fortgesetzt.
+Auch nach dem Schließen des Tabs stellt die App den Schreibmodus
 anhand eines vorhandenen Edit-Branches wieder her. Uncommittete Änderungen auf
 `main` werden vor Freigabe der Sync-Aktionen in einen Edit-Branch übernommen.
 **Holen** bleibt gesperrt, bis der lokale Stand geprüft wurde. Erst nach

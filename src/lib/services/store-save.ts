@@ -1,5 +1,6 @@
 import { getEditMode } from '../stores/edit-mode.svelte';
 import { commitAllToGit, getGitRepo } from './git.service';
+import { getLatestEditSummary } from './git-history';
 import { persistStore } from './init';
 
 /**
@@ -20,5 +21,14 @@ export async function saveStoreChanges(message: string): Promise<string | null> 
 
   persistStore();
   const author = editMode.username || 'user';
-  return commitAllToGit(message, author, `${author}@zeugdb.local`);
+  const commit = await commitAllToGit(message, author, `${author}@zeugdb.local`);
+  if (commit) {
+    try {
+      editMode.lastChangeSummary = await getLatestEditSummary(repo, editMode.branch) ?? { label: message };
+    } catch {
+      // Eine fehlende Zusammenfassung darf ein erfolgreiches Speichern nicht als Fehler melden.
+      editMode.lastChangeSummary = { label: message };
+    }
+  }
+  return commit;
 }

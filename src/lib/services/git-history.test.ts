@@ -6,12 +6,18 @@ const gitMocks = vi.hoisted(() => ({
   listRefs: vi.fn(),
   log: vi.fn(),
   readBlob: vi.fn(),
+  isDescendent: vi.fn(),
   resolveRef: vi.fn()
 }));
 
 vi.mock('isomorphic-git', () => gitMocks);
 
-import { archiveEditBranchHistory, getAssetFieldHistory, getEditBranchChanges } from './git-history';
+import {
+  archiveEditBranchHistory,
+  getAssetFieldHistory,
+  getEditBranchChanges,
+  getLatestEditSummary
+} from './git-history';
 
 function repo(): GitRepo {
   return { getFs: () => ({}) } as unknown as GitRepo;
@@ -166,5 +172,83 @@ describe('getAssetFieldHistory', () => {
     await expect(getAssetFieldHistory(repo(), 'asset-1', 'pruefung[0].Prüfdatum'))
       .resolves.toEqual([]);
     expect(gitMocks.log).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('getLatestEditSummary', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('uses the designation of the latest changed asset instead of its file name', async () => {
+    gitMocks.resolveRef.mockImplementation(async ({ ref }: { ref: string }) =>
+      ref === 'main' ? 'main-commit' : 'edit-commit'
+    );
+    gitMocks.log.mockResolvedValue([{
+      oid: 'edit-commit',
+      commit: {
+        message: 'DGUV-Prüfung gespeichert: asset-307',
+        changes: [['asset-after', 'asset-before', 'assets/asset-307.asset']]
+      }
+    }]);
+    gitMocks.readBlob.mockResolvedValue(blob(
+      'id: asset-307\nbezeichnung: 307 Wandlampe 2 rechts\nlocation: raum-2\n'
+    ));
+
+    await expect(getLatestEditSummary(repo(), 'edit/test'))
+      .resolves.toEqual({
+        label: '307 Wandlampe 2 rechts',
+        locationId: 'raum-2'
+      });
+  });
+
+  it('returns no summary when the edit branch has no commits beyond its base', async () => {
+    gitMocks.resolveRef.mockResolvedValue('same-commit');
+
+    await expect(getLatestEditSummary(repo(), 'edit/test')).resolves.toBeNull();
+    expect(gitMocks.log).not.toHaveBeenCalled();
+  });
+
+  it('returns no summary when the edit branch is behind a moved base branch', async () => {
+    gitMocks.resolveRef.mockImplementation(async ({ ref }: { ref: string }) =>
+      ref === 'main' ? 'new-main' : 'old-main'
+    );
+    gitMocks.isDescendent.mockResolvedValue(true);
+
+    await expect(getLatestEditSummary(repo(), 'edit/test')).resolves.toBeNull();
+    expect(gitMocks.log).not.toHaveBeenCalled();
+  });
+
+  it('leaves the location out when the changed asset has no location', async () => {
+    gitMocks.resolveRef.mockImplementation(async ({ ref }: { ref: string }) =>
+      ref === 'main' ? 'main-commit' : 'edit-commit'
+    );
+    gitMocks.log.mockResolvedValue([{
+      oid: 'edit-commit',
+      commit: {
+        message: 'Asset gespeichert',
+        changes: [['asset-after', 'asset-before', 'assets/asset-307.asset']]
+      }
+    }]);
+    gitMocks.readBlob.mockResolvedValue(blob('id: asset-307\nbezeichnung: Wandlampe\n'));
+
+    await expect(getLatestEditSummary(repo(), 'edit/test'))
+      .resolves.toEqual({ label: 'Wandlampe' });
+  });
+
+  it('falls back to the commit message when the latest change is not an asset', async () => {
+    gitMocks.resolveRef.mockImplementation(async ({ ref }: { ref: string }) =>
+      ref === 'main' ? 'main-commit' : 'edit-commit'
+    );
+    gitMocks.log.mockResolvedValue([{
+      oid: 'edit-commit',
+      commit: {
+        message: 'Standort gespeichert: Saal 2',
+        changes: [['location-after', 'location-before', 'locations/saal-2.location']]
+      }
+    }]);
+
+    await expect(getLatestEditSummary(repo(), 'edit/test'))
+      .resolves.toEqual({ label: 'Standort gespeichert: Saal 2' });
   });
 });

@@ -15,9 +15,12 @@
     createEditBranch,
     syncEditBranch,
     discardEditBranch,
-    fetchRemote
+    fetchRemote,
+    getGitRepo
   } from '$lib/services/git.service';
+  import { getLatestEditSummary } from '$lib/services/git-history';
   import { getSyncMeta } from '$lib/stores/sync-meta.svelte';
+  import { getLocationsStore } from '$lib/stores/locations.store.svelte';
 
   let { children }: { children?: any } = $props();
 
@@ -32,6 +35,7 @@
 
   const editMode = getEditMode();
   const syncMeta = getSyncMeta();
+  const locationsStore = getLocationsStore();
 
   let loading = $state(false);
   let progress = $state<string | null>(null);
@@ -39,6 +43,11 @@
   let showChangesPanel = $state(false);
   let localRecoveryReady = $state(false);
   let localRecoveryError = $state<string | null>(null);
+  const lastChangeLocationName = $derived.by(() => {
+    const locationId = editMode.lastChangeSummary?.locationId;
+    if (!locationId) return null;
+    return locationsStore.findById(locationId)?.name?.trim() || locationId;
+  });
 
   onMount(() => {
     const handleError = (event: ErrorEvent) => {
@@ -63,6 +72,7 @@
     try {
       const username = loadGitConfig()?.username || 'user';
       await recoverEditMode(username);
+      await refreshLastChangeSummary();
     } catch (err: unknown) {
       localRecoveryError = errorMessage(err);
       logDiagnostic('error', `Lokaler Bearbeitungsstand konnte nicht wiederhergestellt werden: ${localRecoveryError}`);
@@ -87,6 +97,21 @@
     }
   }
 
+  async function refreshLastChangeSummary() {
+    const branch = editMode.branch;
+    if (!editMode.isEditing || !branch) {
+      editMode.lastChangeSummary = null;
+      return;
+    }
+
+    try {
+      editMode.lastChangeSummary = await getLatestEditSummary(await getGitRepo(), branch);
+    } catch (err: unknown) {
+      editMode.lastChangeSummary = null;
+      logDiagnostic('warn', `Letzte Änderung konnte nicht ermittelt werden: ${errorMessage(err)}`);
+    }
+  }
+
   async function handleEnterEditMode() {
     if (!localRecoveryReady || localRecoveryError) return;
     loading = true;
@@ -98,6 +123,7 @@
       const email = `${username}@zeugdb.local`;
       editMode.enterEditMode(username, email);
       await createEditBranch(username, email, editMode.branch!);
+      await refreshLastChangeSummary();
       progress = 'Edit-Modus aktiv';
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Edit-Modus fehlgeschlagen';
@@ -198,7 +224,12 @@
         <div class="flex items-center gap-3 text-sm">
           <span class="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
           <span class="text-amber-800 font-medium">Edit-Modus</span>
-          <span class="text-amber-600">— Branch: {editMode.branch}</span>
+          <span class="text-amber-600">
+            — Zuletzt bearbeitet: {editMode.lastChangeSummary?.label ?? 'Noch nichts gespeichert'}
+            {#if lastChangeLocationName}
+              <span class="hidden md:inline"> · {lastChangeLocationName}</span>
+            {/if}
+          </span>
         </div>
         <div class="flex gap-2">
           <button

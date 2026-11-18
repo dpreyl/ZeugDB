@@ -10,6 +10,8 @@ export interface EditMode {
   isEditing: boolean;
   /** Der Edit-Branch (null im Read-Only Modus). */
   branch: string | null;
+  /** Verständliche Bezeichnung der zuletzt gespeicherten Änderung. */
+  lastChangeSummary: { label: string; locationId?: string } | null;
   /** Benutzer-Name (für Git-Commits). */
   username: string | null;
 
@@ -31,6 +33,7 @@ const EDIT_SESSION_KEY = 'zeugdb:edit-session';
 class EditModeImpl implements EditMode {
   public isEditing = $state(false);
   public branch: string | null = $state(null);
+  public lastChangeSummary: { label: string; locationId?: string } | null = $state(null);
   public username: string | null = $state(null);
 
   constructor() {
@@ -54,6 +57,7 @@ class EditModeImpl implements EditMode {
       }
 
       this.branch = session.branch;
+      this.lastChangeSummary = null;
       this.username = session.username;
       this.isEditing = true;
     } catch {
@@ -80,6 +84,7 @@ class EditModeImpl implements EditMode {
   enterEditMode(username: string, email: string): void {
     if (this.isEditing) return; // bereits im Edit-Modus
     this.username = username;
+    this.lastChangeSummary = null;
     const now = new Date();
     const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
     const sessionId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -95,6 +100,7 @@ class EditModeImpl implements EditMode {
       throw new Error('Ungültiger Edit-Branch');
     }
     this.branch = branch;
+    this.lastChangeSummary = null;
     this.username = username;
     this.isEditing = true;
     this.persistSession();
@@ -103,6 +109,7 @@ class EditModeImpl implements EditMode {
   discard(): void {
     this.isEditing = false;
     this.branch = null;
+    this.lastChangeSummary = null;
     this.username = null;
     this.persistSession();
   }
@@ -110,6 +117,7 @@ class EditModeImpl implements EditMode {
   finishEdit(): void {
     this.isEditing = false;
     this.branch = null;
+    this.lastChangeSummary = null;
     this.username = null;
     this.persistSession();
   }

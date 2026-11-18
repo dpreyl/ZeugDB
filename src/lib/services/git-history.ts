@@ -30,6 +30,11 @@ export interface FieldHistoryEntry {
   after: string | null;
 }
 
+export interface LatestEditSummary {
+  label: string;
+  locationId?: string;
+}
+
 export async function archiveEditBranchHistory(repo: GitRepo, branch: string): Promise<void> {
   if (!branch.startsWith('edit/')) {
     throw new Error('Nur Edit-Branches können archiviert werden');
@@ -113,6 +118,46 @@ export async function getAssetFieldHistory(
   return [...commits.values()].sort((left, right) => right.timestamp - left.timestamp);
 }
 
+export async function getLatestEditSummary(
+  repo: GitRepo,
+  branch: string,
+  base = 'main'
+): Promise<LatestEditSummary | null> {
+  const fs = repo.getFs();
+  const [baseOid, branchOid] = await Promise.all([
+    git.resolveRef({ fs, dir: '/', ref: base }),
+    git.resolveRef({ fs, dir: '/', ref: branch })
+  ]);
+  if (
+    baseOid === branchOid ||
+    await git.isDescendent({ fs, dir: '/', oid: baseOid, ancestor: branchOid })
+  ) return null;
+
+  const [latest] = await git.log({
+    fs,
+    dir: '/',
+    ref: branch,
+    depth: 1,
+    includeChanges: true
+  });
+  if (!latest) return null;
+
+  const assetChange = latest.commit.changes?.find(([, , path]) =>
+    path?.startsWith('assets/') && path.endsWith('.asset')
+  );
+  if (assetChange) {
+    const [newOid, oldOid, path] = assetChange;
+    const oid = newOid ?? oldOid;
+    if (oid) {
+      return readAssetSummary(await readBlob(fs, oid), path ?? '');
+    }
+    if (path) return { label: assetNameFromPath(path) };
+  }
+
+  const message = latest.commit.message.trim();
+  return message ? { label: message } : null;
+}
+
 async function listHistoryRefs(fs: ReturnType<GitRepo['getFs']>): Promise<string[]> {
   const refs: string[] = [];
   for (const group of ['refs/heads', 'refs/remotes']) {
@@ -125,6 +170,28 @@ async function listHistoryRefs(fs: ReturnType<GitRepo['getFs']>): Promise<string
     }
   }
   return refs;
+}
+
+function readAssetSummary(content: string, path: string): LatestEditSummary {
+  try {
+    const asset = parseAsset(content).direct;
+    const locationId = asset.location?.trim();
+    return {
+      label: asset.bezeichnung?.trim() || assetNameFromPath(path),
+      ...(locationId ? { locationId } : {})
+    };
+  } catch {
+    return { label: assetNameFromPath(path) };
+  }
+}
+
+function assetNameFromPath(path: string): string {
+  const encodedId = path.slice('assets/'.length, -'.asset'.length);
+  try {
+    return decodeURIComponent(encodedId);
+  } catch {
+    return encodedId;
+  }
 }
 
 async function readAtCommit(

@@ -75,6 +75,16 @@ describe('EditMode', () => {
     expect(sessionStorage.getItem('zeugdb:edit-session')).not.toBeNull();
   });
 
+  it('setzt die Anzeige der letzten Änderung beim Verlassen des Edit-Modus zurück', () => {
+    const mode = getEditMode();
+    mode.enterEditMode('test-user', 'test-email');
+    mode.lastChangeSummary = { label: '307 Wandlampe 2 rechts', locationId: 'raum-2' };
+
+    mode.discard();
+
+    expect(mode.lastChangeSummary).toBeNull();
+  });
+
   it('lehnt beim Wiederherstellen Branches außerhalb von edit/ ab', () => {
     const mode = getEditMode();
 
