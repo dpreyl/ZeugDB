@@ -36,6 +36,7 @@ describe('offline runtime deployment', () => {
     expect(workflow).toContain('actions/configure-pages');
     expect(workflow).toContain('actions/upload-pages-artifact');
     expect(workflow).toContain('actions/deploy-pages');
+    expect(workflow).toContain('actions/deploy-pages@v5');
     expect(workflow).toContain('BASE_PATH');
     expect(workflow).toContain('repo_name="${GITHUB_REPOSITORY#*/}"');
     expect(workflow).toContain('${GITHUB_REPOSITORY_OWNER}.github.io');
