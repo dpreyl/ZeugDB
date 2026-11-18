@@ -1,6 +1,9 @@
 # ---- Build Stage ----
 FROM node:22-alpine AS build
 
+# npm shows update notices even when the bundled version is compatible.
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+
 WORKDIR /app
 
 # Alle Dependencies (dev + prod) für den Build
