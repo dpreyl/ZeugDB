@@ -33,6 +33,22 @@ describe('hasLocalStoreChanges', () => {
     await expect(hasLocalStoreChanges(repo as never)).resolves.toBe(false);
   });
 
+  it('does not report formatting-only differences in an existing asset file', async () => {
+    const store = getAssetStore();
+    const id = store.createAsset({
+      id: 'asset-format',
+      type: 'projector',
+      fields: { bezeichnung: 'Projektor' }
+    });
+    const lines = serializeAssetFile(store.findFull(id)!).trimEnd().split('\n');
+    const original = `# existing comment\n${lines[1]}\n${lines[0]}\n${lines.slice(2).join('\n')}\n`;
+    const repo = createRepo({
+      [`assets/${encodeURIComponent(id)}.asset`]: original
+    });
+
+    await expect(hasLocalStoreChanges(repo as never)).resolves.toBe(false);
+  });
+
   it('detects saved asset data that is not yet written to Git', async () => {
     getAssetStore().createAsset({
       id: 'asset-local-only',

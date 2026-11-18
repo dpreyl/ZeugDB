@@ -86,7 +86,9 @@ Prüfer und Raum bleiben auf diesem
 Gerät für Folgeprüfungen vorgemerkt. Der Assistent fragt Schutzklasse,
 passende Messwerte sowie Prüfergebnis ab und bietet optionale Übersichts- und
 Typenschildbilder an. Neue Geräte erhalten automatisch eine Erstprüfung,
-vorhandene eine Wiederholungsprüfung.
+vorhandene eine Wiederholungsprüfung. Prüfungsblöcke bleiben beim Holen im
+Asset erhalten; beim Speichern werden nur geänderte Felder geschrieben, ohne
+unveränderte Zeilen oder Kommentare der `.asset`-Datei umzuschreiben.
 
 Die Asset-Übersicht zeigt zusätzlich das Datum der letzten DGUV-Prüfung. Auf
 kleinen Bildschirmen werden Assets als kompakte Karten statt als abgeschnittene

@@ -1,5 +1,6 @@
 export { parseAsset, parseFieldLine } from './asset.parser';
 export { serializeAsset } from './asset.writer';
+export { preserveAssetFileContent } from './asset-preserve';
 export { parseType } from './type.parser';
 export { serializeType } from './type.writer';
 export { parseComponent } from './comp.parser';

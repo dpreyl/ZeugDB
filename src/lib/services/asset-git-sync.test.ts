@@ -11,13 +11,15 @@ describe('syncAssetsToGit', () => {
           : Promise.reject(new Error('Verzeichnis fehlt'))
       ),
       readFile: vi.fn().mockImplementation(async (path: string) =>
-        path === 'assets/asset-current.asset' ? 'unchanged' : Promise.reject(new Error('Datei fehlt'))
+        path === 'assets/asset-current.asset'
+          ? 'id: asset-current\ntype: current\n'
+          : Promise.reject(new Error('Datei fehlt'))
       ),
       writeFile: vi.fn().mockResolvedValue(undefined)
     } as unknown as GitRepo;
 
     const changes = await syncAssetsToGit(repo, [
-      { id: 'asset-current', content: 'unchanged' },
+      { id: 'asset-current', content: 'id: asset-current\ntype: current\n' },
       { id: 'asset/new', content: 'new content' }
     ]);
 
@@ -26,6 +28,24 @@ describe('syncAssetsToGit', () => {
       changedFiles: ['assets/asset%2Fnew.asset'],
       deletedFiles: ['assets/asset-old.asset']
     });
+  });
+
+  it('lässt vorhandene Asset-Dateien bei gleichen Werten unverändert', async () => {
+    const original = '# Prüfergebnis\n type: leiter\nid: asset-1\ndatum: 2025-06-20\n';
+    const repo = {
+      readdir: vi.fn().mockResolvedValue(['asset-1.asset']),
+      readFile: vi.fn().mockResolvedValue(original),
+      writeFile: vi.fn().mockResolvedValue(undefined)
+    } as unknown as GitRepo;
+
+    const changes = await syncAssetsToGit(repo, [{
+      id: 'asset-1',
+      content: 'id: asset-1\ntype: leiter\ndatum: 2025-06-20\n'
+    }]);
+
+    expect(repo.writeFile).not.toHaveBeenCalled();
+    expect(changes.changedFiles).toEqual([]);
+    expect(changes.deletedFiles).toEqual([]);
   });
 
   it('behandelt ein fehlendes assets-Verzeichnis als leeren Bestand', async () => {

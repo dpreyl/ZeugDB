@@ -7,6 +7,7 @@ import { serializeAssetFile } from './init';
 import { serializeComponent } from '../parser/comp.writer';
 import { serializeLocation } from '../parser/location.writer';
 import { serializeType } from '../parser/type.writer';
+import { preserveAssetFileContent } from '../parser/asset-preserve';
 
 type ExpectedFile = { path: string; content: string };
 
@@ -66,9 +67,13 @@ async function directoryMatches(
   for (const fileName of fileNames) {
     const path = `${directory}/${fileName}`;
     const expectedContent = expectedByPath.get(path);
-    if (expectedContent === undefined || await readFileOrNull(repo, path) !== expectedContent) {
-      return false;
-    }
+    if (expectedContent === undefined) return false;
+    const original = await readFileOrNull(repo, path);
+    if (original === null) return false;
+    const expected = directory === 'assets'
+      ? preserveAssetFileContent(original, expectedContent)
+      : expectedContent;
+    if (original !== expected) return false;
   }
   return true;
 }

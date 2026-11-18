@@ -1,4 +1,5 @@
 import type { GitRepo } from '../git/repo';
+import { preserveAssetFileContent } from '../parser/asset-preserve';
 
 export type AssetGitFile = {
   id: string;
@@ -20,8 +21,12 @@ export async function syncAssetsToGit(
   for (const asset of assets) {
     const path = `assets/${encodeURIComponent(asset.id)}.asset`;
     currentPaths.add(path);
-    if (await readFileOrNull(repo, path) !== asset.content) {
-      await repo.writeFile(path, asset.content);
+    const original = await readFileOrNull(repo, path);
+    const content = original === null
+      ? asset.content
+      : preserveAssetFileContent(original, asset.content);
+    if (original !== content) {
+      await repo.writeFile(path, content);
       changedFiles.push(path);
     }
   }
